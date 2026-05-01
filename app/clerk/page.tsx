@@ -6,12 +6,13 @@ import { useDropzone } from 'react-dropzone'
 import { 
   ShieldCheck, FileUp, UserCheck, MessageSquare, 
   FileText, AlertTriangle, CheckCircle, Clock,
-  Upload, Loader2, Search, ClipboardCheck, FileText as FileIcon
+  Upload, Loader2, Search, ClipboardCheck, FileText as FileIcon, Bot
 } from 'lucide-react'
 import { MAHARASHTRA_DATA } from '@/lib/talukas'
 
 export default function ClerkDashboard() {
   const [activeTab, setActiveTab] = useState<'intake' | 'eligibility' | 'grievance'>('intake')
+  const [isAiBatchProcessing, setIsAiBatchProcessing] = useState(false)
   
   // Intake State
   const [isClassifying, setIsClassifying] = useState(false)
@@ -147,6 +148,28 @@ export default function ClerkDashboard() {
     }
   }
 
+  const handleTriggerAIBatch = async () => {
+    setIsAiBatchProcessing(true)
+    try {
+      const res = await fetch('/api/run-ai-batch', { method: 'POST' })
+      if (!res.ok && res.status === 405) {
+        const fallbackRes = await fetch('/api/run-ai-batch')
+        if (!fallbackRes.ok) throw new Error(`API returned ${fallbackRes.status}`)
+      } else if (!res.ok) {
+        throw new Error(`API returned ${res.status}`)
+      }
+
+      toast.success('AI Batch Processed!', {
+        description: 'Pending applications have been scanned and routed.',
+        icon: <Bot className="text-[#1B4332]" />
+      })
+    } catch (error: any) {
+      toast.error('Failed to trigger AI Batch: ' + error.message)
+    } finally {
+      setIsAiBatchProcessing(false)
+    }
+  }
+
   return (
     <div className="flex h-screen bg-[#f8faf9]">
       {/* Sidebar */}
@@ -206,6 +229,18 @@ export default function ClerkDashboard() {
             {activeTab === 'grievance' && 'Grievance Registration'}
           </h2>
           <div className="flex items-center gap-4">
+             <button 
+              onClick={handleTriggerAIBatch}
+              disabled={isAiBatchProcessing}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#1B4332] hover:bg-[#012d1d] rounded-full shadow-sm hover:shadow-md transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isAiBatchProcessing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Bot size={14} />
+              )}
+              {isAiBatchProcessing ? "Processing..." : "Run AI Batch (Demo)"}
+            </button>
              <span className="text-xs text-[#717973] font-medium bg-[#f2f4f3] px-3 py-1.5 rounded-full">
               Session Active: {new Date().toLocaleDateString()}
             </span>

@@ -12,9 +12,11 @@ import {
   ShieldAlert, 
   ShieldCheck, 
   XCircle,
-  Loader2,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Bot,
+  Microscope,
+  Terminal
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,6 +37,9 @@ export default function ClerkQueuePage() {
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideJustification, setOverrideJustification] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAiBatchProcessing, setIsAiBatchProcessing] = useState(false);
+  const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
+  const [auditResults, setAuditResults] = useState<Record<string, string>>({});
 
   const supabase = createClient();
 
@@ -59,6 +64,53 @@ export default function ClerkQueuePage() {
       setLoading(false);
     }
   }
+
+  const handleTriggerAIBatch = async () => {
+    setIsAiBatchProcessing(true);
+    try {
+      // First attempt POST, fallback to GET depending on the hackathon API setup
+      const res = await fetch('/api/run-ai-batch', { method: 'POST' });
+      if (!res.ok && res.status === 405) {
+        const fallbackRes = await fetch('/api/run-ai-batch');
+        if (!fallbackRes.ok) throw new Error(`API returned ${fallbackRes.status}`);
+      } else if (!res.ok) {
+        throw new Error(`API returned ${res.status}`);
+      }
+
+      toast.success("AI Batch Processed! Queue updated.", {
+        description: "The PRAGATI AI Engine has successfully scanned pending applications.",
+        icon: <Bot className="text-indigo-500" />
+      });
+
+      // Refresh the queue immediately to show the newly flagged applications
+      await fetchExceptions();
+    } catch (err: any) {
+      toast.error("Failed to trigger AI Batch: " + err.message);
+    } finally {
+      setIsAiBatchProcessing(false);
+    }
+  };
+
+  const handleDeepAudit = async (appId: string) => {
+    if (auditResults[appId]) return;
+    setAuditingAppId(appId);
+    try {
+      const response = await fetch('/api/deep-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_id: appId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      
+      setAuditResults(prev => ({ ...prev, [appId]: data.audit_report }));
+      toast.success("Deep AI Audit Complete", { icon: <Microscope className="text-emerald-500" /> });
+    } catch (err: any) {
+      toast.error("Audit Failed: " + err.message);
+    } finally {
+      setAuditingAppId(null);
+    }
+  };
 
   const handleRequestSMS = (app: Application) => {
     toast.success(`Request Sent to ${app.farmer_id}`, {
@@ -142,6 +194,18 @@ export default function ClerkQueuePage() {
             <History size={14} />
             Refresh Queue
           </button>
+          <button 
+            onClick={handleTriggerAIBatch}
+            disabled={isAiBatchProcessing}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isAiBatchProcessing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Bot size={14} />
+            )}
+            {isAiBatchProcessing ? "AI Engine Processing..." : "Trigger AI Batch Processor (Demo)"}
+          </button>
         </div>
       </div>
 
@@ -165,7 +229,8 @@ export default function ClerkQueuePage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {applications.map((app) => (
-                <tr key={app.id} className="hover:bg-slate-50/50 transition-colors">
+                <React.Fragment key={app.id}>
+                <tr className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-5">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -185,7 +250,15 @@ export default function ClerkQueuePage() {
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button 
+                        onClick={() => handleDeepAudit(app.id)}
+                        disabled={auditingAppId === app.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-emerald-600 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 rounded-lg transition-all"
+                      >
+                        {auditingAppId === app.id ? <Loader2 size={14} className="animate-spin" /> : <Microscope size={14} />}
+                        {auditingAppId === app.id ? "Initializing Gemini Vision..." : "🔬 Deep AI Audit (Live)"}
+                      </button>
                       <button 
                         onClick={() => handleRequestSMS(app)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:shadow-sm transition-all"
@@ -203,6 +276,45 @@ export default function ClerkQueuePage() {
                     </div>
                   </td>
                 </tr>
+                {(auditResults[app.id] || auditingAppId === app.id) && (
+                  <tr>
+                    <td colSpan={3} className="px-6 pb-6 pt-0 bg-white border-b-0">
+                      <div className="bg-slate-900 rounded-xl p-5 border border-slate-700 shadow-[0_0_15px_rgba(16,185,129,0.15)] overflow-hidden font-mono text-xs text-emerald-400 relative animate-in fade-in slide-in-from-top-4">
+                         <div className="flex justify-between items-center mb-4 border-b border-slate-700/50 pb-3">
+                            <div className="flex items-center gap-2 text-emerald-500/70">
+                               <Terminal size={14} />
+                               <span className="tracking-widest opacity-80">PRAGATI_VISION_NODE // AUDIT_SEQ_{app.id.substring(0,8).toUpperCase()}</span>
+                            </div>
+                            {auditResults[app.id] && (
+                               <button 
+                                 onClick={() => setAuditResults(prev => {
+                                   const newRes = {...prev};
+                                   delete newRes[app.id];
+                                   return newRes;
+                                 })}
+                                 className="text-slate-500 hover:text-white flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-md transition-colors"
+                               >
+                                 <XCircle size={12} /> Close Terminal
+                               </button>
+                            )}
+                         </div>
+                         {auditingAppId === app.id ? (
+                            <div className="flex flex-col gap-3 animate-pulse text-emerald-500/60 font-semibold tracking-wider">
+                              <p>{">"} INITIALIZING MULTIMODAL ANALYSIS...</p>
+                              <p>{">"} FETCHING STORAGE BUCKET DOCUMENT...</p>
+                              <p>{">"} AWAITING GOOGLE GEMINI VISION RESPONSE...</p>
+                              <div className="h-2 w-2 bg-emerald-500 rounded-full animate-ping mt-2"></div>
+                            </div>
+                         ) : (
+                            <div className="whitespace-pre-wrap leading-relaxed text-[13px]">
+                              {auditResults[app.id]}
+                            </div>
+                         )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
