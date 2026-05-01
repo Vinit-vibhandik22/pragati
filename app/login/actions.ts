@@ -13,6 +13,14 @@ export async function login(prevState: any, formData: FormData) {
     return { error: 'Email and password are required' }
   }
 
+  // DEMO BYPASS FOR HACKATHON
+  if (email === 'clerk@pragati.gov.in' && password === 'pragati2026') {
+    redirect('/clerk/queue')
+  }
+  if (email === 'officer@pragati.gov.in' && password === 'pragati2026') {
+    redirect('/tao/dashboard')
+  }
+
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
@@ -32,7 +40,7 @@ export async function login(prevState: any, formData: FormData) {
     .single()
 
   const role = profile?.role || 'clerk'
-  redirect(role === 'officer' ? '/officer' : '/clerk')
+  redirect(role === 'officer' ? '/tao/dashboard' : '/clerk/queue')
 }
 
 export async function signup(prevState: any, formData: FormData) {

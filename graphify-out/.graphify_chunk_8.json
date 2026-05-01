@@ -1,0 +1,9 @@
+{
+  "nodes": [
+    {"id": "window_svg", "label": "Window Icon (SVG)", "file_type": "image", "source_file": "public/window.svg"}
+  ],
+  "edges": [],
+  "hyperedges": [],
+  "input_tokens": 100,
+  "output_tokens": 100
+}

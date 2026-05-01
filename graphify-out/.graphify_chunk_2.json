@@ -1,0 +1,36 @@
+{
+  "nodes": [
+    {"id": "notifications_api", "label": "Notifications API", "file_type": "code", "source_file": "app/api/notifications/route.ts"},
+    {"id": "clerk_dashboard", "label": "Clerk Dashboard", "file_type": "code", "source_file": "app/clerk/page.tsx"},
+    {"id": "login_actions", "label": "Login Server Actions", "file_type": "code", "source_file": "app/login/actions.ts"},
+    {"id": "login_page", "label": "Login Page", "file_type": "code", "source_file": "app/login/page.tsx"},
+    {"id": "officer_dashboard", "label": "Officer Dashboard", "file_type": "code", "source_file": "app/officer/page.tsx"},
+    {"id": "audit_lib", "label": "Audit Library", "file_type": "code", "source_file": "lib/audit.ts"},
+    {"id": "claude_lib", "label": "Claude API Wrapper", "file_type": "code", "source_file": "lib/claude.ts"},
+    {"id": "constants_lib", "label": "Constants & Config", "file_type": "code", "source_file": "lib/constants.ts"},
+    {"id": "distress_lib", "label": "Distress Computation Engine", "file_type": "code", "source_file": "lib/distress.ts"},
+    {"id": "fraud_lib", "label": "Fraud Detection Logic", "file_type": "code", "source_file": "lib/fraud.ts"},
+    {"id": "gemini_lib", "label": "Gemini API Wrapper", "file_type": "code", "source_file": "lib/gemini.ts"},
+    {"id": "ocr_lib", "label": "OCR Strategy", "file_type": "code", "source_file": "lib/ocr.ts"}
+  ],
+  "edges": [
+    {"source": "clerk_dashboard", "target": "classify_document_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "clerk_dashboard", "target": "check_eligibility_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "clerk_dashboard", "target": "grievances_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "officer_dashboard", "target": "dashboard_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "officer_dashboard", "target": "applications_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "officer_dashboard", "target": "distress_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "officer_dashboard", "target": "notifications_api", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "distress_lib", "target": "supabase_client", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "fraud_lib", "target": "supabase_client", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "ocr_lib", "target": "tesseract_js", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "ocr_lib", "target": "pdf_parse", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "claude_lib", "target": "anthropic_sdk", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "gemini_lib", "target": "google_genai_sdk", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0}
+  ],
+  "hyperedges": [
+    {"id": "multi_llm_strategy", "label": "Multi-LLM Strategy", "nodes": ["claude_lib", "gemini_lib"], "relation": "participate_in", "confidence": "INFERRED", "confidence_score": 0.95}
+  ],
+  "input_tokens": 8000,
+  "output_tokens": 1200
+}

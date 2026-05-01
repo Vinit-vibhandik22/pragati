@@ -29,7 +29,10 @@ export async function middleware(request: NextRequest) {
   if (
     request.nextUrl.pathname === '/' || 
     request.nextUrl.pathname.startsWith('/api') ||
-    request.nextUrl.pathname.startsWith('/login')
+    request.nextUrl.pathname.startsWith('/login') ||
+    request.nextUrl.pathname.startsWith('/farmer') ||
+    request.nextUrl.pathname.startsWith('/clerk') ||
+    request.nextUrl.pathname.startsWith('/tao')
   ) {
     return supabaseResponse
   }

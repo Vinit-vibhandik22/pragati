@@ -1,0 +1,42 @@
+{
+  "nodes": [
+    {"id": "eslint_config", "label": "ESLint Configuration", "file_type": "code", "source_file": "eslint.config.mjs"},
+    {"id": "middleware", "label": "Next.js Middleware", "file_type": "code", "source_file": "middleware.ts"},
+    {"id": "next_config", "label": "Next.js Configuration", "file_type": "code", "source_file": "next.config.ts"},
+    {"id": "layout", "label": "Root Layout", "file_type": "code", "source_file": "app/layout.tsx"},
+    {"id": "home_page", "label": "Home Page", "file_type": "code", "source_file": "app/page.tsx"},
+    {"id": "analyze_grievance_api", "label": "Analyze Grievance API", "file_type": "code", "source_file": "app/api/analyze-grievance/route.ts"},
+    {"id": "applications_api", "label": "Applications API", "file_type": "code", "source_file": "app/api/applications/route.ts"},
+    {"id": "batch_applications_api", "label": "Batch Applications API", "file_type": "code", "source_file": "app/api/applications/batch/route.ts"},
+    {"id": "application_detail_api", "label": "Application Detail API", "file_type": "code", "source_file": "app/api/applications/[id]/route.ts"},
+    {"id": "audit_api", "label": "Audit Log API", "file_type": "code", "source_file": "app/api/audit/route.ts"},
+    {"id": "check_eligibility_api", "label": "Check Eligibility API", "file_type": "code", "source_file": "app/api/check-eligibility/route.ts"},
+    {"id": "classify_document_api", "label": "Classify Document API", "file_type": "code", "source_file": "app/api/classify-document/route.ts"},
+    {"id": "constants_api", "label": "Constants API", "file_type": "code", "source_file": "app/api/constants/route.ts"},
+    {"id": "dashboard_api", "label": "Dashboard Statistics API", "file_type": "code", "source_file": "app/api/dashboard/route.ts"},
+    {"id": "distress_api", "label": "Distress Score API", "file_type": "code", "source_file": "app/api/distress/route.ts"},
+    {"id": "export_applications_api", "label": "Export Applications API", "file_type": "code", "source_file": "app/api/export/applications/route.ts"},
+    {"id": "export_grievances_api", "label": "Export Grievances API", "file_type": "code", "source_file": "app/api/export/grievances/route.ts"}
+  ],
+  "edges": [
+    {"source": "middleware", "target": "supabase_auth", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "analyze_grievance_api", "target": "gemini_nlp", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "analyze_grievance_api", "target": "distress_computation", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "check_eligibility_api", "target": "schemes_prefilter", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "check_eligibility_api", "target": "gemini_nlp", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "classify_document_api", "target": "ocr_extraction", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "classify_document_api", "target": "gemini_nlp", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "classify_document_api", "target": "fraud_check", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "dashboard_api", "target": "supabase_queries", "relation": "shares_data_with", "confidence": "INFERRED", "confidence_score": 0.9},
+    {"source": "distress_api", "target": "distress_computation", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "analyze_grievance_api", "target": "audit_log", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "classify_document_api", "target": "audit_log", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "batch_applications_api", "target": "audit_log", "relation": "calls", "confidence": "EXTRACTED", "confidence_score": 1.0}
+  ],
+  "hyperedges": [
+    {"id": "officer_command_center_flow", "label": "Officer Command Center Flow", "nodes": ["dashboard_api", "applications_api", "distress_api", "audit_api"], "relation": "participate_in", "confidence": "INFERRED", "confidence_score": 0.85},
+    {"id": "ai_analysis_pipeline", "label": "AI Analysis Pipeline", "nodes": ["analyze_grievance_api", "check_eligibility_api", "classify_document_api"], "relation": "implement", "confidence": "INFERRED", "confidence_score": 0.9}
+  ],
+  "input_tokens": 5000,
+  "output_tokens": 1000
+}

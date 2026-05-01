@@ -1,0 +1,9 @@
+{
+  "nodes": [
+    {"id": "vercel_svg", "label": "Vercel Logo (SVG)", "file_type": "image", "source_file": "public/vercel.svg"}
+  ],
+  "edges": [],
+  "hyperedges": [],
+  "input_tokens": 100,
+  "output_tokens": 100
+}

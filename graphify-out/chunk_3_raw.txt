@@ -1,0 +1,311 @@
+--- FILE: D:\PRAGATI\HANDOFF.md ---
+# PRAGATI AI: Project Handoff & Knowledge Base
+
+> **Project Mission**: To modernize Maharashtra's Taluka Agriculture Offices through AI-powered automation, predictive distress scoring, and automated fraud detection.
+
+---
+
+## 🚀 1. Project Overview
+PRAGATI (Progress) is an AI-first government platform designed to bridge the gap between complex agricultural administrative tasks and efficient public service. It handles document classification, scheme eligibility matching, grievance analysis with predictive distress scoring, and legal document auditing (VakilSaathi).
+
+### Key Pillars:
+1. **Intelligent Ingestion**: OCR-powered document classification and field extraction.
+2. **Accountability**: Every action (rejection, approval, status change) is fire-and-forget logged in a tamper-evident audit trail.
+3. **Predictive Welfare**: Real-time distress scoring based on application history and grievance urgency.
+4. **Fraud Prevention**: Parallel deterministic checks to flag irregularities (duplicate Aadhaar, village clusters, land survey overlap).
+5. **VakilSaathi**: A legal AI assistant to explain complex land/agreement documents to farmers and flag harmful clauses.
+
+---
+
+## 🛠 2. Technology Stack
+* **Framework**: Next.js 15.1.4 (App Router)
+* **Language**: TypeScript (Strict Mode)
+* **Database**: Supabase (PostgreSQL) with Row Level Security (RLS)
+* **Auth**: Supabase SSR (Cookie-based sessions)
+* **AI Engine**: 
+    * **Claude 3.5 Sonnet**: Used for complex extraction and structured JSON output (Document classification, Grievance priority, Legal analysis).
+    * **Gemini 1.5 Flash**: Alternative engine for rapid processing.
+* **OCR**: `pdf-parse` (v2) for digital PDFs, falling back to `Tesseract.js` for images/scans.
+* **Styling**: Vanilla CSS (Premium aesthetics planned for Phase 2).
+
+---
+
+## 📂 3. Directory Structure
+```text
+PRAGATI/
+├── app/
+│   ├── api/                # 15+ REST endpoints for logic execution
+│   │   ├── applications/   # CRUD, batch actions, detail view
+│   │   ├── audit/          # Accountability logs retrieval
+│   │   ├── classify-document/ # OCR + Fraud + Pre-rejection
+│   │   ├── distress/       # Predictive risk scoring
+│   │   └── legal-analysis/ # VakilSaathi logic
+│   ├── login/              # Auth pages & server actions
+│   ├── clerk/              # [PENDING] Clerk dashboard UI
+│   └── officer/            # [PENDING] Officer dashboard UI
+├── lib/
+│   ├── audit.ts            # Audit log constructor & fire-and-forget logger
+│   ├── claude.ts           # Anthropic wrapper with retry logic & prompts
+│   ├── distress.ts         # Predictive scoring math (weighted signals)
+│   ├── fraud.ts            # Parallel irregularity detection checks
+│   ├── ocr.ts              # PDF/Image processing pipeline
+│   ├── schemes.ts          # Rule-based eligibility matching for 10 schemes
+│   └── supabase/           # SSR clients (client.ts, server.ts, middleware.ts)
+├── types/
+│   └── index.ts            # Centralized TypeScript interfaces
+├── supabase/
+│   └── schema.sql          # DB structure, RLS, triggers, indexes
+├── scripts/
+│   └── seed.js             # Realistic demo data generator
+└── PROGRESS.md             # Living document of task completion
+```
+
+---
+
+## 🧠 4. Intelligence Engines (The "Secret Sauce")
+
+### A. The Fraud Engine (`lib/fraud.ts`)
+Runs 5 checks in parallel to flag `risk_score` (LOW/MEDIUM/HIGH):
+1. **Duplicate Aadhaar**: Flags if the last 4 digits are already registered in the district with a different name.
+2. **Amount Anomaly**: Flags if a claim is >2.5x district average or 4x median for that document type.
+3. **Village Cluster**: Flags if >10 applications arrive from the same village in 24 hours (detects intermediary interference).
+4. **Land Survey Check**: Uses Regex to find "Gat No/Survey No" and cross-references existing non-rejected apps.
+5. **Same-Scheme Check**: Prevents a farmer from having two active applications for the same scheme.
+
+### B. Predictive Distress Scoring (`lib/distress.ts`)
+Computes a `risk_level` (LOW/MEDIUM/HIGH/CRITICAL) for each farmer:
+* **+20 pts**: Per rejection in the last 90 days.
+* **+25 pts**: Per unresolved grievance past SLA deadline.
+* **+40 pts**: Per Priority 5 (Critical) unresolved grievance.
+* **+15 pts**: If eligible for 3+ schemes but applied for none (unclaimed benefits).
+* **+30 pts**: Per insurance claim stuck for >30 days.
+
+### C. VakilSaathi Legal AI (`lib/claude.ts` -> `LEGAL_PROMPT`)
+* Analyzes documents like Land Sale Deeds or Tenancy Agreements.
+* Flags "Harmful" clauses (e.g., hidden underpayment, missing witnesses).
+* Explains clauses in "Plain English" for the farmer.
+
+---
+
+## 🗄 5. Database Schema Details
+Full schema is in `supabase/schema.sql`. Key highlights:
+* **Profiles**: Role-based (`clerk` vs `officer`).
+* **Applications**: Central store for document data, risk scores, and irregularity flags.
+* **Grievances**: Includes `sla_deadline` (auto-computed) and `priority` (AI-assigned).
+* **Audit Log**: Every status change or application creation logs `actor_id`, `action`, and `details`.
+* **RLS**: 
+    * Everyone can read everything (authenticated).
+    * Only Officers can `UPDATE` applications/grievances.
+    * Only Service Role (API) can modify `distress_scores`.
+
+---
+
+## 🛣 6. Roadmap: Next Steps for the Next AI
+You are currently entering **Phase 2: Frontend Implementation**.
+
+### Immediate UI Tasks:
+1. **Clerk Dashboard (`app/clerk/page.tsx`)**:
+    * Document upload widget (use `react-dropzone`).
+    * Display `POST /api/classify-document` results immediately.
+    * Highlight `irregularity_flags` in red.
+2. **Officer Dashboard (`app/officer/page.tsx`)**:
+    * 9 KPI cards (Pending, Approved, High Risk, Critical Distress, etc.).
+    * Queue table with sortable columns.
+    * "Batch Approval" mode (select multiple rows -> call `/api/applications/batch`).
+3. **Shared Components**:
+    * `RiskBadge`: Colored tag for Risk Level.
+    * `DistressPulse`: Pulsing red dot for Farmers in CRITICAL/HIGH distress.
+    * `AuditTimeline`: Component to show the accountability trail for a single ID.
+
+---
+
+## 🔑 7. Demo & Development
+### Credentials (populate with `node scripts/seed.js`):
+* **Clerk**: `clerk@pragati.demo` / `clerk123`
+* **Officer**: `officer@pragati.demo` / `officer123`
+
+### Required Environment Variables (`.env.local`):
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+```
+
+---
+
+## 📜 8. Accountability Clause
+Every API route should use the `logAudit` helper from `lib/audit.ts`.
+Example:
+```typescript
+await logAudit(supabase, actorId, 'application_created', 'application', appId, { riskScore });
+```
+This is a core criterion for the project's success.
+
+---
+**Document Status**: Final Version (Phase 1 Complete)
+**Created By**: Antigravity AI
+**Date**: 2026-04-30
+
+
+--- FILE: D:\PRAGATI\PROGRESS.md ---
+# PRAGATI AI — Progress Tracking
+
+## ✅ Phase 1: Backend Foundation (COMPLETE)
+
+### Infrastructure
+- [x] Next.js 15 scaffold with `serverExternalPackages` for native Node modules
+- [x] Supabase SSR client (cookie-based auth, server-only admin client)
+- [x] Auth middleware with session refresh, role-based route protection
+- [x] Auth server actions (`login`, `signup`, `signout`) in `app/login/actions.ts`
+- [x] `.env.local.example` with all required vars
+
+### Intelligence Engines (`lib/` — 837 lines)
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| `claude.ts` | 145 | Anthropic wrapper: retry + backoff, 5 prompt templates |
+| `schemes.ts` | 185 | Rule-based pre-filter for 10 schemes, returns eligible + excluded with reasons |
+| `fraud.ts` | 189 | 5 parallel fraud checks: dup Aadhaar, amount anomaly, village cluster, dup land, dup scheme |
+| `distress.ts` | 104 | Predictive distress scoring (4 signal types, 4 risk levels) |
+| `ocr.ts` | 80 | PDF + image OCR with pdf-parse v2 → Tesseract fallback |
+| `constants.ts` | 76 | SLA configs, 36 MH districts, dropdowns, ID generators |
+| `audit.ts` | 58 | Fire-and-forget audit logging with pre-built action constructors |
+
+### Type System (`types/index.ts` — 207 lines)
+- [x] Full interfaces: Application, Grievance, Profile, Scheme, DistressScore, FarmerProfile
+- [x] API response types: ClassifyDocument, Eligibility, GrievanceAnalysis, LegalAnalysis
+- [x] AuditLogEntry, NewApplication, IrregularityResult, PreRejectionWarning
+
+### API Routes (15 endpoints)
+| Route | Method | Module | Status |
+|-------|--------|--------|--------|
+| `/api/classify-document` | POST | Doc Classification + OCR + Fraud + Audit | ✅ |
+| `/api/check-eligibility` | POST | Scheme Matching (eligible + excluded with reasons) | ✅ |
+| `/api/analyze-grievance` | POST | Grievance NLP + Auto-distress recompute + Audit | ✅ |
+| `/api/legal-analysis` | POST | VakilSaathi Document Analysis | ✅ |
+| `/api/fraud-check` | POST | Standalone Fraud Check | ✅ |
+| `/api/dashboard` | GET | 9 KPIs + 5 charts + taluka heatmap + activity feed | ✅ |
+| `/api/distress` | GET/POST/PATCH | Distress CRUD + officer acknowledge | ✅ |
+| `/api/applications` | GET | List (paginated, filtered) | ✅ |
+| `/api/applications/[id]` | GET/PATCH | Detail + Officer Actions + Audit | ✅ |
+| `/api/applications/batch` | POST | Bulk approve/reject (up to 50) + Audit | ✅ |
+| `/api/grievances` | GET | List (priority-sorted, overdue-enriched) | ✅ |
+| `/api/grievances/[id]` | PATCH | Status Update + Audit | ✅ |
+| `/api/constants` | GET | All dropdown values for frontend forms | ✅ |
+| `/api/audit` | GET | Accountability trail viewer (officer-only) | ✅ |
+| `/api/health` | GET | System health check (no auth) | ✅ |
+
+### Database (`supabase/schema.sql`)
+- [x] 6 tables: profiles, applications, grievances, eligibility_checks, distress_scores, audit_log
+- [x] Row Level Security on all tables
+- [x] 12 performance indexes
+- [x] Auto-profile creation trigger on signup
+- [x] Auto-update `updated_at` trigger
+- [x] UNIQUE constraint on `distress_scores.farmer_identifier` for upsert
+
+### Seed Data (`scripts/seed.js`)
+- [x] 2 demo auth users (clerk + officer) via Supabase Admin API
+- [x] 20 realistic applications (3 HIGH risk with irregularity flags)
+- [x] 10 grievances (2 overdue, 1 escalated, bilingual Marathi+English)
+- [x] 3 distress scores (1 CRITICAL, 2 HIGH)
+
+### TypeScript Compilation: ✅ ZERO ERRORS
+
+---
+
+## 🔜 Phase 2: Frontend UI (PENDING — For Frontend Agent)
+
+### Auth Pages
+- [ ] Login page (`/login`) — email/password form using server actions
+- [ ] Signup page with role selection (clerk vs officer)
+
+### Clerk Dashboard (`/clerk`)
+- [ ] Document upload form (drag-and-drop via react-dropzone → `POST /api/classify-document`)
+- [ ] Classification result card with confidence indicators
+- [ ] Pre-rejection warnings display
+- [ ] Irregularity flags display (held applications)
+- [ ] Grievance registration form (`POST /api/analyze-grievance`)
+- [ ] **distressAlert** toast when grievance triggers CRITICAL/HIGH distress
+- [ ] Scheme eligibility checker (`POST /api/check-eligibility`)
+  - Show eligible schemes AND excluded schemes with exclusion reasons
+- [ ] VakilSaathi legal document upload (`POST /api/legal-analysis`)
+
+### Officer Dashboard (`/officer`)
+- [ ] Command Center with 9 KPI cards (from `GET /api/dashboard`)
+- [ ] Application queue table (filterable, sortable)
+- [ ] Batch approve/reject button (`POST /api/applications/batch`)
+- [ ] Application detail panel (`GET/PATCH /api/applications/[id]`)
+- [ ] Grievance tracker with SLA countdown + overdue highlighting
+- [ ] Distress Intelligence panel (`GET /api/distress?min_risk=HIGH`)
+  - Pulsing indicator for `needs_immediate_attention` farmers
+  - Officer "Acknowledge" action (`PATCH /api/distress`)
+- [ ] Taluka heatmap visualization (data from dashboard API)
+- [ ] Audit trail viewer (`GET /api/audit`)
+- [ ] Charts: status, doc types, risk distribution, grievance categories, priorities
+
+### Shared Components
+- [ ] Navigation sidebar with role-based menu
+- [ ] Status badge component (color-coded)
+- [ ] Risk score indicator (LOW=green, MEDIUM=amber, HIGH=red)
+- [ ] SLA countdown timer component
+- [ ] Toast notifications (sonner) — hook into distressAlert responses
+
+---
+
+## Demo Credentials
+```
+Clerk:   clerk@pragati.demo / clerk123
+Officer: officer@pragati.demo / officer123
+```
+
+## Setup Steps
+1. Create Supabase project → copy URL, anon key, service role key to `.env.local`
+2. Run `supabase/schema.sql` in SQL Editor
+3. Create storage bucket named `documents` (public)
+4. Add Anthropic API key to `.env.local`
+5. Run `node scripts/seed.js` to populate demo data
+6. Run `npm run dev` to start the app
+
+
+--- FILE: D:\PRAGATI\README.md ---
+# PRAGATI: AI-Powered Agricultural Platform
+
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+

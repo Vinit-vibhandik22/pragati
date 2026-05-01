@@ -1,0 +1,3514 @@
+--- FILE: D:\PRAGATI\app\api\notifications\route.ts ---
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+/**
+ * GET /api/notifications
+ * 
+ * Returns real-time notification feed for officers:
+ * - HIGH risk applications that need review
+ * - Overdue SLA grievances
+ * - CRITICAL distress alerts (un-acknowledged)
+ * - Recent escalations
+ * 
+ * This powers the notification bell in the officer dashboard header.
+ */
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const now = new Date()
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    // Run all notification queries in parallel
+    const [highRiskApps, overdueGrievances, criticalDistress, recentEscalations] = await Promise.all([
+      // HIGH risk apps submitted in last 24h
+      supabase
+        .from('applications')
+        .select('app_id, farmer_name, risk_score, irregularity_flags, submitted_at')
+        .eq('risk_score', 'HIGH')
+        .eq('status', 'held')
+        .gte('submitted_at', oneDayAgo)
+        .order('submitted_at', { ascending: false })
+        .limit(10),
+
+      // Overdue grievances
+      supabase
+        .from('grievances')
+        .select('grievance_id, farmer_name, category, priority, sla_deadline, status')
+        .neq('status', 'resolved')
+        .lt('sla_deadline', now.toISOString())
+        .order('priority', { ascending: false })
+        .limit(10),
+
+      // Un-acknowledged CRITICAL distress
+      supabase
+        .from('distress_scores')
+        .select('farmer_identifier, farmer_name, score, risk_level, signals')
+        .in('risk_level', ['CRITICAL', 'HIGH'])
+        .eq('officer_alerted', false)
+        .order('score', { ascending: false })
+        .limit(5),
+
+      // Recent escalations (last 48h)
+      supabase
+        .from('grievances')
+        .select('grievance_id, farmer_name, category, priority, registered_at')
+        .eq('status', 'escalated')
+        .gte('registered_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .order('registered_at', { ascending: false })
+        .limit(5),
+    ])
+
+    // Build notification objects
+    const notifications = [
+      ...(highRiskApps.data || []).map(app => ({
+        id: `risk-${app.app_id}`,
+        type: 'high_risk' as const,
+        severity: 'error' as const,
+        title: 'Fraud Alert',
+        message: `${app.farmer_name} — ${(app.irregularity_flags as unknown[])?.length || 0} irregularity flags detected`,
+        targetUrl: `/officer/applications/${app.app_id}`,
+        timestamp: app.submitted_at,
+      })),
+
+      ...(overdueGrievances.data || []).map(g => ({
+        id: `sla-${g.grievance_id}`,
+        type: 'sla_breach' as const,
+        severity: 'warning' as const,
+        title: 'SLA Overdue',
+        message: `${g.farmer_name} — ${g.category?.replace(/_/g, ' ')} (P${g.priority}) past deadline`,
+        targetUrl: `/officer/grievances/${g.grievance_id}`,
+        timestamp: g.sla_deadline,
+      })),
+
+      ...(criticalDistress.data || []).map(d => ({
+        id: `distress-${d.farmer_identifier}`,
+        type: 'distress_alert' as const,
+        severity: 'critical' as const,
+        title: 'Farmer Distress',
+        message: `${d.farmer_name} — Score ${d.score} (${d.risk_level}). ${(d.signals as unknown[])?.length || 0} risk signals.`,
+        targetUrl: `/officer/distress/${d.farmer_identifier}`,
+        timestamp: new Date().toISOString(),
+      })),
+
+      ...(recentEscalations.data || []).map(e => ({
+        id: `esc-${e.grievance_id}`,
+        type: 'escalation' as const,
+        severity: 'error' as const,
+        title: 'Escalated Grievance',
+        message: `${e.farmer_name} — ${e.category?.replace(/_/g, ' ')} (P${e.priority})`,
+        targetUrl: `/officer/grievances/${e.grievance_id}`,
+        timestamp: e.registered_at,
+      })),
+    ].sort((a, b) => {
+      // Sort: critical first, then by timestamp
+      const severityOrder = { critical: 0, error: 1, warning: 2 }
+      const aSev = severityOrder[a.severity] ?? 3
+      const bSev = severityOrder[b.severity] ?? 3
+      if (aSev !== bSev) return aSev - bSev
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    })
+
+    return NextResponse.json({
+      notifications,
+      unreadCount: notifications.length,
+      hasUrgent: notifications.some(n => n.severity === 'critical'),
+    })
+  } catch (error) {
+    console.error('[notifications] Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+
+--- FILE: D:\PRAGATI\app\clerk\page.tsx ---
+'use client'
+
+import { useState, useCallback } from 'react'
+import { toast } from 'sonner'
+import { useDropzone } from 'react-dropzone'
+import { 
+  ShieldCheck, FileUp, UserCheck, MessageSquare, 
+  FileText, AlertTriangle, CheckCircle, Clock,
+  Upload, Loader2, Search, ClipboardCheck, FileText as FileIcon
+} from 'lucide-react'
+import { MAHARASHTRA_DATA } from '@/lib/talukas'
+
+export default function ClerkDashboard() {
+  const [activeTab, setActiveTab] = useState<'intake' | 'eligibility' | 'grievance'>('intake')
+  
+  // Intake State
+  const [isClassifying, setIsClassifying] = useState(false)
+  const [classificationResult, setClassificationResult] = useState<any>(null)
+  const [farmerData, setFarmerData] = useState({
+    name: '',
+    aadhaar: '',
+    district: 'Pune',
+    taluka: 'Haveli'
+  })
+
+  // Eligibility State
+  const [profileData, setProfileData] = useState({
+    name: '',
+    district: 'Pune',
+    taluka: 'Haveli',
+    landSize: 2.5,
+    primaryCrop: 'Sugar Cane',
+    category: 'General'
+  })
+  const [isCheckingEligibility, setIsCheckingEligibility] = useState(false)
+  const [eligibilityResult, setEligibilityResult] = useState<any>(null)
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return
+    
+    if (!farmerData.name || !farmerData.aadhaar) {
+      toast.error('Please enter Farmer Name and Aadhaar (Last 4) first.')
+      return
+    }
+
+    const file = acceptedFiles[0]
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('farmerName', farmerData.name)
+    formData.append('aadhaarLast4', farmerData.aadhaar)
+    formData.append('taluka', farmerData.taluka)
+    formData.append('district', 'Pune')
+
+    setIsClassifying(true)
+    setClassificationResult(null)
+
+    try {
+      const response = await fetch('/api/classify-document', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Classification failed')
+
+      setClassificationResult(data)
+      toast.success('Document classified successfully!')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsClassifying(false)
+    }
+  }, [farmerData])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop, 
+    accept: {'image/*': [], 'application/pdf': []}, 
+    maxFiles: 1 
+  })
+
+  const checkEligibility = async () => {
+    if (!profileData.name) {
+      toast.error('Please enter Farmer Name.')
+      return
+    }
+
+    setIsCheckingEligibility(true)
+    setEligibilityResult(null)
+
+    try {
+      const response = await fetch('/api/check-eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileData),
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Eligibility check failed')
+
+      setEligibilityResult(data)
+      toast.success('Eligibility check complete!')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsCheckingEligibility(false)
+    }
+  }
+
+  const [isRegisteringGrievance, setIsRegisteringGrievance] = useState(false)
+  const [grievanceResult, setGrievanceResult] = useState<any>(null)
+
+  // Grievance State
+  const [grievanceData, setGrievanceData] = useState({
+    farmer_name: '',
+    aadhaar_last4: '',
+    district: 'Pune',
+    taluka: 'Haveli',
+    complaint_text: ''
+  })
+
+  const registerGrievance = async () => {
+    if (!grievanceData.farmer_name || !grievanceData.complaint_text) {
+      toast.error('Please enter Farmer Name and Complaint details.')
+      return
+    }
+
+    setIsRegisteringGrievance(true)
+    setGrievanceResult(null)
+
+    try {
+      const response = await fetch('/api/grievances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(grievanceData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) throw new Error(data.error || 'Failed to register grievance')
+
+      setGrievanceResult(data)
+      toast.success('Grievance registered successfully!')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsRegisteringGrievance(false)
+    }
+  }
+
+  return (
+    <div className="flex h-screen bg-[#f8faf9]">
+      {/* Sidebar */}
+      <aside className="w-64 bg-[#012d1d] text-white flex flex-col">
+        <div className="p-6 border-b border-[#1B4332]">
+          <div className="flex items-center gap-3">
+            <div className="bg-[#1B4332] p-2 rounded-lg">
+              <ShieldCheck className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="font-bold text-lg tracking-tight">PRAGATI AI</h1>
+          </div>
+          <p className="text-[10px] text-[#86af99] mt-1 uppercase tracking-widest">Govt. of Maharashtra</p>
+        </div>
+        
+        <nav className="flex-1 p-4 space-y-2 mt-4">
+          <button 
+            onClick={() => setActiveTab('intake')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'intake' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#86af99] hover:bg-[#1B4332]/50 hover:text-white'}`}
+          >
+            <FileUp className="w-5 h-5" />
+            <span className="font-medium text-sm">Document Intake</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('eligibility')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'eligibility' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#86af99] hover:bg-[#1B4332]/50 hover:text-white'}`}
+          >
+            <UserCheck className="w-5 h-5" />
+            <span className="font-medium text-sm">Eligibility Engine</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('grievance')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'grievance' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#86af99] hover:bg-[#1B4332]/50 hover:text-white'}`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span className="font-medium text-sm">Grievances</span>
+          </button>
+        </nav>
+
+        <div className="p-6 border-t border-[#1B4332]">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#2D6A4F] flex items-center justify-center text-xs font-bold">CP</div>
+            <div>
+              <p className="text-xs font-medium">Clerk Pune</p>
+              <p className="text-[10px] text-[#86af99]">Tahsildar Office</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto flex flex-col">
+        {/* Header */}
+        <header className="bg-white border-b border-[#e1e3e2] px-8 py-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-[#191c1c]">
+            {activeTab === 'intake' && 'Document Intake & AI Classification'}
+            {activeTab === 'eligibility' && 'Precision Eligibility Engine'}
+            {activeTab === 'grievance' && 'Grievance Registration'}
+          </h2>
+          <div className="flex items-center gap-4">
+             <span className="text-xs text-[#717973] font-medium bg-[#f2f4f3] px-3 py-1.5 rounded-full">
+              Session Active: {new Date().toLocaleDateString()}
+            </span>
+          </div>
+        </header>
+
+        <div className="p-8 max-w-5xl mx-auto w-full">
+          {activeTab === 'intake' && (
+            <div className="space-y-8">
+              {/* Farmer Info Form */}
+              <div className="bg-white p-6 rounded-2xl border border-[#e1e3e2] shadow-sm">
+                <h3 className="text-sm font-semibold text-[#1B4332] mb-6 flex items-center gap-2">
+                  <ClipboardCheck className="w-4 h-4" />
+                  Farmer Profile Intake
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-1.5">Farmer Full Name</label>
+                    <input 
+                      type="text" 
+                      value={farmerData.name}
+                      onChange={(e) => setFarmerData({...farmerData, name: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-lg px-4 py-2 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                      placeholder="e.g. Ramesh K. Patil"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-1.5">Aadhaar (Last 4)</label>
+                    <input 
+                      type="text" 
+                      maxLength={4}
+                      value={farmerData.aadhaar}
+                      onChange={(e) => setFarmerData({...farmerData, aadhaar: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-lg px-4 py-2 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                      placeholder="4432"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-1.5">District</label>
+                    <select 
+                      value={farmerData.district}
+                      onChange={(e) => {
+                        const dist = e.target.value;
+                        setFarmerData({...farmerData, district: dist, taluka: MAHARASHTRA_DATA[dist][0]});
+                      }}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-lg px-4 py-2 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      {Object.keys(MAHARASHTRA_DATA).map(dist => (
+                        <option key={dist} value={dist}>{dist}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-1.5">Taluka</label>
+                    <select 
+                      value={farmerData.taluka}
+                      onChange={(e) => setFarmerData({...farmerData, taluka: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-lg px-4 py-2 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      {MAHARASHTRA_DATA[farmerData.district]?.map(tal => (
+                        <option key={tal} value={tal}>{tal}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Upload Zone */}
+              <div 
+                {...getRootProps()} 
+                className={`border-2 border-dashed rounded-3xl p-12 transition-all flex flex-col items-center justify-center cursor-pointer ${
+                  isDragActive ? 'border-[#1B4332] bg-[#1B4332]/5' : 'border-[#e1e3e2] bg-white hover:border-[#1B4332]/50 hover:bg-[#f8faf9]'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <div className="bg-[#f2f4f3] p-4 rounded-full mb-4">
+                  <Upload className="w-8 h-8 text-[#1B4332]" />
+                </div>
+                <h4 className="text-lg font-bold text-[#191c1c]">Drag & Drop Document</h4>
+                <p className="text-[#717973] text-sm mt-1">Upload PDF, JPG or PNG (Max 10MB)</p>
+                <button className="mt-6 bg-[#1B4332] text-white px-6 py-2.5 rounded-xl font-medium text-sm hover:bg-[#012d1d] transition-all shadow-lg shadow-[#1B4332]/10">
+                  Select File
+                </button>
+              </div>
+
+              {/* Loading State */}
+              {isClassifying && (
+                <div className="bg-white p-12 rounded-3xl border border-[#e1e3e2] flex flex-col items-center justify-center animate-pulse">
+                  <Loader2 className="w-10 h-10 text-[#1B4332] animate-spin mb-4" />
+                  <p className="font-bold text-[#191c1c]">Classifying document...</p>
+                  <p className="text-[#717973] text-sm mt-1">Running OCR and AI Analysis</p>
+                </div>
+              )}
+
+              {/* Result Card */}
+              {classificationResult && (
+                <div className="bg-white rounded-3xl border border-[#e1e3e2] shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className={`p-6 flex items-center justify-between ${classificationResult.application.risk_score === 'HIGH' ? 'bg-[#ba1a1a]/5' : 'bg-[#1B4332]/5'}`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`p-3 rounded-2xl ${classificationResult.application.risk_score === 'HIGH' ? 'bg-[#ba1a1a] text-white' : 'bg-[#1B4332] text-white'}`}>
+                        {classificationResult.application.risk_score === 'HIGH' ? <AlertTriangle className="w-6 h-6" /> : <FileIcon className="w-6 h-6" />}
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-[#717973]">Classification Complete</p>
+                        <h4 className="text-xl font-bold text-[#191c1c] capitalize">
+                          {classificationResult.application.document_type?.replace(/_/g, ' ')}
+                        </h4>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                       <span className={`px-4 py-1.5 rounded-full text-xs font-bold ${
+                         classificationResult.application.risk_score === 'HIGH' ? 'bg-[#ba1a1a] text-white' : 
+                         classificationResult.application.risk_score === 'MEDIUM' ? 'bg-[#F59E0B] text-white' : 
+                         'bg-[#1B4332] text-white'
+                       }`}>
+                        {classificationResult.application.risk_score} RISK
+                       </span>
+                      <p className="text-[10px] text-[#717973] mt-2 font-medium">Confidence: {classificationResult.ocrConfidence.toFixed(0)}%</p>
+                    </div>
+                  </div>
+
+                  <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Scheme Detected</label>
+                        <p className="font-bold text-[#191c1c] text-lg">{classificationResult.classification.schemeName || 'General Inquiry'}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Claimed Amount</label>
+                        <p className="font-bold text-[#191c1c] text-lg">₹{classificationResult.classification.claimedAmount?.toLocaleString() || '0'}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Target Department</label>
+                        <p className="font-medium text-[#414844]">{classificationResult.classification.department}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <h5 className="text-sm font-bold text-[#191c1c]">AI Analysis Findings</h5>
+                      
+                      {/* New: Display Pre-Rejection Warnings (e.g. Name Mismatch) */}
+                      {classificationResult.preRejectionWarnings?.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                          {classificationResult.preRejectionWarnings.map((warning: any, i: number) => (
+                            <div key={i} className="flex gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-bold text-amber-700">{warning.field}: Discrepancy Found</p>
+                                <p className="text-[10px] text-amber-800 font-medium">{warning.issue}</p>
+                                <p className="text-[9px] text-amber-600 italic mt-1">Suggested: {warning.suggestedFix}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        {classificationResult.application.irregularity_flags?.length > 0 ? (
+                          classificationResult.application.irregularity_flags.map((flag: any, i: number) => (
+                            <div key={i} className="flex gap-3 p-3 bg-[#ba1a1a]/5 rounded-xl border border-[#ba1a1a]/10">
+                              <AlertTriangle className="w-4 h-4 text-[#ba1a1a] shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-bold text-[#ba1a1a]">{flag.type}</p>
+                                <p className="text-[10px] text-[#414844]">{flag.detail}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex gap-3 p-3 bg-[#1B4332]/5 rounded-xl border border-[#1B4332]/10">
+                            <CheckCircle className="w-4 h-4 text-[#1B4332] shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-xs font-bold text-[#1B4332]">No Irregularities Detected</p>
+                              <p className="text-[10px] text-[#414844]">This document appears legitimate based on local data checks.</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {classificationResult.application.risk_score === 'HIGH' && (
+                    <div className="bg-[#ba1a1a] p-4 flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-white" />
+                      <p className="text-white text-sm font-medium">
+                        <strong>CRITICAL:</strong> Multiple fraud indicators detected. This application is automatically HELD for officer review.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="p-6 bg-[#f8faf9] border-t border-[#e1e3e2] flex justify-end gap-4">
+                    <button 
+                      onClick={() => setClassificationResult(null)}
+                      className="px-6 py-2.5 text-sm font-bold text-[#717973] hover:text-[#191c1c] transition-all"
+                    >
+                      Discard & Re-upload
+                    </button>
+                    <button 
+                      disabled={classificationResult.application.risk_score === 'HIGH'}
+                      className={`px-8 py-2.5 rounded-xl text-sm font-bold shadow-lg transition-all ${
+                        classificationResult.application.risk_score === 'HIGH' 
+                        ? 'bg-[#e1e3e2] text-[#717973] cursor-not-allowed shadow-none' 
+                        : 'bg-[#1B4332] text-white hover:bg-[#012d1d] shadow-[#1B4332]/20'
+                      }`}
+                    >
+                      Confirm & Submit to Queue
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'eligibility' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+               {/* Eligibility Form */}
+               <div className="bg-white p-8 rounded-3xl border border-[#e1e3e2] shadow-sm">
+                <h3 className="text-lg font-bold text-[#1B4332] mb-8 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5" />
+                  Farmer Eligibility Profile
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Farmer Full Name</label>
+                    <input 
+                      type="text" 
+                      value={profileData.name}
+                      onChange={(e) => setProfileData({...profileData, name: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                      placeholder="Enter farmer's full name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Land Size (Acres)</label>
+                    <input 
+                      type="number" 
+                      value={profileData.landSize}
+                      onChange={(e) => setProfileData({...profileData, landSize: parseFloat(e.target.value)})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Primary Crop</label>
+                    <select 
+                      value={profileData.primaryCrop}
+                      onChange={(e) => setProfileData({...profileData, primaryCrop: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      <option>Sugar Cane</option>
+                      <option>Cotton</option>
+                      <option>Onion</option>
+                      <option>Soybean</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">District</label>
+                    <select 
+                      value={profileData.district}
+                      onChange={(e) => {
+                        const dist = e.target.value;
+                        setProfileData({...profileData, district: dist, taluka: MAHARASHTRA_DATA[dist][0]});
+                      }}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      {Object.keys(MAHARASHTRA_DATA).map(dist => (
+                        <option key={dist} value={dist}>{dist}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Taluka</label>
+                    <select 
+                      value={profileData.taluka}
+                      onChange={(e) => setProfileData({...profileData, taluka: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      {MAHARASHTRA_DATA[profileData.district]?.map(tal => (
+                        <option key={tal} value={tal}>{tal}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Category</label>
+                    <select 
+                      value={profileData.category}
+                      onChange={(e) => setProfileData({...profileData, category: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                    >
+                      <option>General</option>
+                      <option>OBC</option>
+                      <option>SC</option>
+                      <option>ST</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button 
+                      onClick={checkEligibility}
+                      disabled={isCheckingEligibility}
+                      className="w-full bg-[#1B4332] text-white py-3 rounded-xl font-bold hover:bg-[#012d1d] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1B4332]/20 disabled:opacity-70"
+                    >
+                      {isCheckingEligibility ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      {isCheckingEligibility ? 'Matching Schemes...' : 'Check Eligibility'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Eligibility Results */}
+              {eligibilityResult && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  {eligibilityResult.matched.map((match: any, i: number) => (
+                    <div key={i} className="bg-white rounded-3xl border border-[#e1e3e2] overflow-hidden shadow-md flex flex-col">
+                      <div className="p-6 bg-[#1B4332]/5 border-b border-[#1B4332]/10 flex justify-between items-start">
+                        <div>
+                          <p className="text-[10px] text-[#1B4332] font-bold uppercase tracking-widest mb-1">Matched Scheme</p>
+                          <h4 className="font-bold text-[#191c1c]">{match.schemeDetails.name}</h4>
+                        </div>
+                        <span className="bg-[#1B4332] text-white text-[10px] font-bold px-2 py-1 rounded-md">
+                          {match.confidence.toUpperCase()} MATCH
+                        </span>
+                      </div>
+                      <div className="p-6 flex-1 space-y-4">
+                        <div className="flex justify-between items-center bg-[#f8faf9] p-3 rounded-xl">
+                          <span className="text-xs text-[#717973]">Benefit Amount</span>
+                          <span className="text-sm font-bold text-[#1B4332]">{match.schemeDetails.benefitAmount}</span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-[#717973] font-bold uppercase mb-1">Reason for Eligibility</p>
+                          <p className="text-xs text-[#414844]">{match.reason}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-[#717973] font-bold uppercase mb-1">Required Documents</p>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {match.schemeDetails.requiredDocs.map((doc: string, j: number) => (
+                              <span key={j} className="text-[10px] bg-[#f2f4f3] text-[#414844] px-2 py-1 rounded-md border border-[#e1e3e2]">
+                                {doc}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-[#f8faf9] border-t border-[#e1e3e2]">
+                        <button className="w-full bg-white border border-[#e1e3e2] text-[#1B4332] py-2 rounded-xl text-xs font-bold hover:bg-[#1B4332] hover:text-white transition-all">
+                          Start Application
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {eligibilityResult.matched.length === 0 && (
+                    <div className="md:col-span-2 bg-white p-12 rounded-3xl border border-[#e1e3e2] text-center">
+                      <AlertTriangle className="w-12 h-12 text-[#F59E0B] mx-auto mb-4" />
+                      <h4 className="font-bold text-[#191c1c]">No direct matches found</h4>
+                      <p className="text-[#717973] text-sm mt-1">Try adjusting the profile details or check specific exclusions below.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'grievance' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+               {/* Grievance Form */}
+               <div className="bg-white p-8 rounded-3xl border border-[#e1e3e2] shadow-sm">
+                <h3 className="text-lg font-bold text-[#1B4332] mb-8 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Register Farmer Grievance
+                </h3>
+                
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Farmer Name</label>
+                      <input 
+                        type="text" 
+                        value={grievanceData.farmer_name}
+                        onChange={(e) => setGrievanceData({...grievanceData, farmer_name: e.target.value})}
+                        className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                        placeholder="e.g. Anand Deshmukh"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Aadhaar (Last 4)</label>
+                      <input 
+                        type="text" 
+                        maxLength={4}
+                        value={grievanceData.aadhaar_last4}
+                        onChange={(e) => setGrievanceData({...grievanceData, aadhaar_last4: e.target.value})}
+                        className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none" 
+                        placeholder="8891"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">District</label>
+                      <select 
+                        value={grievanceData.district}
+                        onChange={(e) => {
+                          const dist = e.target.value;
+                          setGrievanceData({...grievanceData, district: dist});
+                        }}
+                        className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                      >
+                        {Object.keys(MAHARASHTRA_DATA).map(dist => (
+                          <option key={dist} value={dist}>{dist}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Taluka</label>
+                      <select 
+                        value={grievanceData.taluka}
+                        onChange={(e) => setGrievanceData({...grievanceData, taluka: e.target.value})}
+                        className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-xl px-4 py-3 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none"
+                      >
+                        {MAHARASHTRA_DATA[grievanceData.district]?.map(tal => (
+                          <option key={tal} value={tal}>{tal}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold text-[#717973] mb-2">Complaint Details</label>
+                    <textarea 
+                      rows={4}
+                      value={grievanceData.complaint_text}
+                      onChange={(e) => setGrievanceData({...grievanceData, complaint_text: e.target.value})}
+                      className="w-full bg-[#f8faf9] border border-[#e1e3e2] rounded-lg px-4 py-4 text-sm text-[#191c1c] focus:ring-2 focus:ring-[#1B4332] outline-none h-32 resize-none" 
+                      placeholder="Describe the issue in detail (Marathi/English supported)..."
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={registerGrievance}
+                      disabled={isRegisteringGrievance}
+                      className="bg-[#1B4332] text-white px-10 py-3 rounded-xl font-bold hover:bg-[#012d1d] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1B4332]/20 disabled:opacity-70"
+                    >
+                      {isRegisteringGrievance ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
+                      {isRegisteringGrievance ? 'Analyzing Complaint...' : 'Register Grievance'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grievance Result */}
+              {grievanceResult && (
+                <div className="bg-white rounded-3xl border border-[#e1e3e2] shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="p-6 bg-[#1B4332] text-white flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-6 h-6" />
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-bold opacity-80">Grievance Registered</p>
+                        <h4 className="font-bold text-lg">{grievanceResult.grievance.grievance_id}</h4>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-widest font-bold opacity-80">SLA Deadline</p>
+                      <h4 className="font-bold">{new Date(grievanceResult.grievance.sla_deadline).toLocaleDateString()}</h4>
+                    </div>
+                  </div>
+                  <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="p-4 bg-[#f8faf9] rounded-2xl border border-[#e1e3e2]">
+                      <p className="text-[10px] text-[#717973] font-bold uppercase mb-1">AI Category</p>
+                      <p className="font-bold text-[#1B4332] capitalize">{grievanceResult.analysis.category.replace(/_/g, ' ')}</p>
+                    </div>
+                    <div className="p-4 bg-[#f8faf9] rounded-2xl border border-[#e1e3e2]">
+                      <p className="text-[10px] text-[#717973] font-bold uppercase mb-1">Priority Level</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${
+                          grievanceResult.analysis.priority >= 4 ? 'bg-[#ba1a1a]' : 
+                          grievanceResult.analysis.priority >= 3 ? 'bg-[#F59E0B]' : 'bg-[#1B4332]'
+                        }`} />
+                        <p className="font-bold text-[#191c1c]">{grievanceResult.analysis.priority} / 5</p>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-[#f8faf9] rounded-2xl border border-[#e1e3e2]">
+                      <p className="text-[10px] text-[#717973] font-bold uppercase mb-1">Routing To</p>
+                      <p className="font-bold text-[#191c1c]">{grievanceResult.analysis.suggestedDepartment}</p>
+                    </div>
+                    <div className="md:col-span-3">
+                       <p className="text-[10px] text-[#717973] font-bold uppercase mb-2">Priority Analysis</p>
+                       <p className="text-sm text-[#414844] italic">"{grievanceResult.analysis.priorityReason}"</p>
+                    </div>
+                  </div>
+                  <div className="p-6 bg-[#f2f4f3] border-t border-[#e1e3e2] flex justify-center">
+                    <p className="text-[10px] text-[#717973] font-medium">An automated notification has been sent to the {grievanceResult.analysis.suggestedDepartment}.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+
+--- FILE: D:\PRAGATI\app\login\actions.ts ---
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export async function login(prevState: any, formData: FormData) {
+  const supabase = await createClient()
+
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+
+  if (!email || !password) {
+    return { error: 'Email and password are required' }
+  }
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  // Fetch role to determine redirect
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'Authentication failed' }
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const role = profile?.role || 'clerk'
+  redirect(role === 'officer' ? '/officer' : '/clerk')
+}
+
+export async function signup(prevState: any, formData: FormData) {
+  const supabase = await createClient()
+
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const fullName = formData.get('fullName') as string
+  const role = formData.get('role') as string
+
+  if (!email || !password || !fullName || !role) {
+    return { error: 'All fields are required' }
+  }
+
+  if (!['clerk', 'officer'].includes(role)) {
+    return { error: 'Invalid role' }
+  }
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+        role: role,
+      },
+    },
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  redirect(role === 'officer' ? '/officer' : '/clerk')
+}
+
+export async function signout() {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/login')
+}
+
+
+--- FILE: D:\PRAGATI\app\login\page.tsx ---
+'use client'
+
+import { useActionState } from 'react'
+import { login } from './actions'
+import { toast } from 'sonner'
+import { useEffect } from 'react'
+import { Loader2, ShieldCheck } from 'lucide-react'
+
+export default function LoginPage() {
+  const [state, formAction, isPending] = useActionState(login, null)
+
+  useEffect(() => {
+    if (state?.error) {
+      toast.error(state.error)
+    }
+  }, [state])
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#f8faf9] relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#1B4332] rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#2D6A4F] rounded-full blur-[120px]" />
+      </div>
+
+      <div className="w-full max-w-md p-8 relative z-10">
+        <div className="bg-white rounded-2xl shadow-[0_12px_40px_rgba(27,67,50,0.06)] p-8 border border-[#e1e3e2]">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <div className="bg-[#1B4332] p-3 rounded-xl">
+                <ShieldCheck className="w-8 h-8 text-white" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-[#191c1c] tracking-tight">PRAGATI AI</h1>
+            <p className="text-[#414844] text-sm mt-1 uppercase tracking-widest font-medium">Government of Maharashtra</p>
+            <p className="text-[#717973] text-xs mt-4">Officer & Clerk Authentication</p>
+          </div>
+
+          <form action={formAction} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-[#414844] mb-1.5" htmlFor="email">
+                Email Address
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                className="w-full px-4 py-2.5 bg-[#f2f4f3] border-none rounded-lg focus:ring-2 focus:ring-[#1B4332] transition-all outline-none text-[#191c1c]"
+                placeholder="officer@pragati.gov.in"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[#414844] mb-1.5" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className="w-full px-4 py-2.5 bg-[#f2f4f3] border-none rounded-lg focus:ring-2 focus:ring-[#1B4332] transition-all outline-none text-[#191c1c]"
+                placeholder="••••••••"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isPending}
+              className="w-full bg-[#1B4332] text-white py-3 rounded-lg font-semibold hover:bg-[#012d1d] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#1B4332]/20 disabled:opacity-70"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Authenticating...
+                </>
+              ) : (
+                'Login to Dashboard'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-[#f2f4f3] text-center space-y-2">
+            <a href="#" className="text-sm text-[#1B4332] hover:underline block font-medium">
+              Forgot Password?
+            </a>
+            <p className="text-xs text-[#717973]">
+              Need Access? <a href="#" className="text-[#1B4332] hover:underline font-medium">Contact Administrator</a>
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 text-center">
+          <p className="text-[#717973] text-[10px] uppercase tracking-[0.2em]">
+            Digital India • Maharashtra State IT Cell
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+--- FILE: D:\PRAGATI\app\officer\page.tsx ---
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
+} from 'recharts'
+import { 
+  ShieldAlert, Users, FileText, Clock, CheckCircle, XCircle, 
+  AlertTriangle, Bell, Search, Filter, RefreshCcw, 
+  ChevronRight, MoreVertical, LayoutDashboard, ListChecks, 
+  HeartPulse, Info, Loader2, ArrowUpRight, ArrowDownRight
+} from 'lucide-react'
+import { toast } from 'sonner'
+
+// Colors for charts
+const COLORS = ['#1B4332', '#2D6A4F', '#40916C', '#52B788', '#74C69D', '#95D5B2']
+const RISK_COLORS: Record<string, string> = {
+  LOW: '#1B4332',
+  MEDIUM: '#F59E0B',
+  HIGH: '#EF4444',
+  CRITICAL: '#7F1D1D'
+}
+
+export default function OfficerDashboard() {
+  const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'distress'>('overview')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
+  
+  // Data State
+  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [applications, setApplications] = useState<any[]>([])
+  const [distressData, setDistressData] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch all data
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true)
+    else setIsRefreshing(true)
+
+    try {
+      const [dashRes, appRes, distressRes, notifRes] = await Promise.all([
+        fetch('/api/dashboard'),
+        fetch('/api/applications?limit=20'),
+        fetch('/api/distress?limit=10'),
+        fetch('/api/notifications')
+      ])
+
+      const [dash, apps, distress, notifs] = await Promise.all([
+        dashRes.json(),
+        appRes.json(),
+        distressRes.json(),
+        notifRes.json()
+      ])
+
+      setDashboardData(dash)
+      setApplications(apps.data || [])
+      setDistressData(distress.topDistress || [])
+      setNotifications(notifs.notifications || [])
+    } catch (error) {
+      console.error('Fetch error:', error)
+      toast.error('Failed to sync dashboard data')
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+    // Auto-refresh every 60s
+    const interval = setInterval(() => fetchData(true), 60000)
+    return () => clearInterval(interval)
+  }, [fetchData])
+
+  // Actions
+  const updateAppStatus = async (id: string, newStatus: string) => {
+    // Optimistic UI update
+    const previousApps = [...applications]
+    setApplications(apps => apps.map(a => a.id === id ? { ...a, status: newStatus } : a))
+
+    try {
+      const res = await fetch(`/api/applications/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (!res.ok) throw new Error('Update failed')
+      
+      toast.success(`Application #${id.slice(0, 6)} marked as ${newStatus}`)
+      fetchData(true) // Refresh dashboard counters
+    } catch (error) {
+      setApplications(previousApps)
+      toast.error('Failed to update status')
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#f8faf9]">
+        <Loader2 className="w-12 h-12 text-[#1B4332] animate-spin mb-4" />
+        <p className="text-[#1B4332] font-medium animate-pulse">Initializing Command Center...</p>
+      </div>
+    )
+  }
+
+  const kpis = dashboardData?.kpis || {}
+  const charts = dashboardData?.charts || {}
+
+  return (
+    <div className="min-h-screen bg-[#f8faf9] flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-[#e1e3e2] flex flex-col fixed h-full">
+        <div className="p-6 border-b border-[#e1e3e2] bg-[#1B4332] text-white">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-6 h-6" />
+            <h1 className="font-bold text-lg tracking-tight">PRAGATI <span className="text-[#95D5B2] font-light italic">AI</span></h1>
+          </div>
+          <p className="text-[10px] uppercase tracking-widest mt-1 opacity-70">Officer Command Center</p>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2 mt-4">
+          <button 
+            onClick={() => setActiveTab('overview')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all ${activeTab === 'overview' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#717973] hover:bg-[#f8faf9]'}`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Command Center
+          </button>
+          <button 
+            onClick={() => setActiveTab('applications')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all ${activeTab === 'applications' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#717973] hover:bg-[#f8faf9]'}`}
+          >
+            <ListChecks className="w-4 h-4" />
+            Review Queue
+          </button>
+          <button 
+            onClick={() => setActiveTab('distress')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all ${activeTab === 'distress' ? 'bg-[#1B4332] text-white shadow-lg' : 'text-[#717973] hover:bg-[#f8faf9]'}`}
+          >
+            <HeartPulse className="w-4 h-4" />
+            Distress Watchlist
+          </button>
+        </nav>
+
+        <div className="p-6 border-t border-[#e1e3e2]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#1B4332] flex items-center justify-center text-white font-bold">
+              OD
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#191c1c]">Officer Deshmukh</p>
+              <p className="text-[10px] text-[#717973] font-medium uppercase">Pune District HQ</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="ml-64 flex-1 p-8">
+        {/* Header */}
+        <header className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-2xl font-black text-[#191c1c]">Dashboard</h2>
+            <p className="text-[#717973] text-sm font-medium">Real-time surveillance & processing portal</p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="w-10 h-10 rounded-full bg-white border border-[#e1e3e2] flex items-center justify-center text-[#191c1c] hover:bg-[#f8faf9] relative"
+              >
+                <Bell className="w-5 h-5" />
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#EF4444] rounded-full border-2 border-white text-[10px] text-white flex items-center justify-center font-bold">
+                    {notifications.filter(n => !n.read).length}
+                  </span>
+                )}
+              </button>
+              
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-[#e1e3e2] z-50 overflow-hidden">
+                  <div className="p-4 bg-[#1B4332] text-white flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-widest">Notifications</span>
+                    <button onClick={() => setShowNotifications(false)}><XCircle className="w-4 h-4" /></button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-8 text-center text-[#717973] text-sm">No new alerts</div>
+                    ) : (
+                      notifications.map((n: any) => (
+                        <div key={n.id} className={`p-4 border-b border-[#e1e3e2] hover:bg-[#f8faf9] cursor-pointer transition-colors ${!n.read ? 'bg-[#f0fdf4]' : ''}`}>
+                          <div className="flex gap-3">
+                            <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${n.severity === 'CRITICAL' ? 'bg-[#EF4444]' : n.severity === 'HIGH' ? 'bg-[#F59E0B]' : 'bg-[#3B82F6]'}`} />
+                            <div>
+                              <p className="text-sm font-bold text-[#191c1c] leading-tight">{n.title}</p>
+                              <p className="text-xs text-[#717973] mt-1">{n.message}</p>
+                              <p className="text-[10px] text-[#b0b3b1] mt-2 font-medium">{new Date(n.created_at).toLocaleTimeString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => fetchData(true)}
+              disabled={isRefreshing}
+              className="px-4 py-2 bg-white border border-[#e1e3e2] rounded-xl flex items-center gap-2 text-sm font-bold text-[#191c1c] hover:bg-[#f8faf9] disabled:opacity-50"
+            >
+              <RefreshCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Sync Data
+            </button>
+          </div>
+        </header>
+
+        {activeTab === 'overview' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <KpiCard 
+                label="Pending Review" 
+                value={kpis.pendingApps} 
+                icon={<Clock className="w-5 h-5" />} 
+                trend="+5%" 
+                up={true}
+              />
+              <KpiCard 
+                label="High Risk Flags" 
+                value={kpis.highRiskHeld} 
+                icon={<ShieldAlert className="w-5 h-5 text-[#EF4444]" />} 
+                trend="-2%" 
+                up={false}
+                alert={kpis.highRiskHeld > 0}
+              />
+              <KpiCard 
+                label="Open Grievances" 
+                value={kpis.openGrievances} 
+                icon={<FileText className="w-5 h-5" />} 
+                trend="+12" 
+                up={true}
+              />
+              <KpiCard 
+                label="Overdue SLA" 
+                value={kpis.overdueGrievances} 
+                icon={<AlertTriangle className="w-5 h-5 text-[#F59E0B]" />} 
+                trend="0" 
+                up={true}
+                alert={kpis.overdueGrievances > 0}
+              />
+            </div>
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-[#e1e3e2] shadow-sm">
+                <div className="flex justify-between items-center mb-8">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#191c1c]">Application Flow</h3>
+                    <p className="text-[#717973] text-sm">Volume distribution by document type</p>
+                  </div>
+                  <BarChart className="w-5 h-5 text-[#717973]" />
+                </div>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={charts.documentTypes}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" fontSize={11} axisLine={false} tickLine={false} tick={{fill: '#717973'}} />
+                      <YAxis fontSize={11} axisLine={false} tickLine={false} tick={{fill: '#717973'}} />
+                      <RechartsTooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Bar dataKey="count" fill="#1B4332" radius={[4, 4, 0, 0]} barSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl p-8 border border-[#e1e3e2] shadow-sm">
+                <div className="flex justify-between items-center mb-8">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#191c1c]">Status Breakdown</h3>
+                    <p className="text-[#717973] text-sm">Current queue health</p>
+                  </div>
+                  <Filter className="w-5 h-5 text-[#717973]" />
+                </div>
+                <div className="h-[250px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={charts.status}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {charts.status?.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-4 pt-4 border-t border-[#f1f5f9]">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-[#717973] font-medium uppercase text-[10px] tracking-wider">SLA Compliance</span>
+                    <span className="text-[#1B4332] font-bold">{kpis.slaCompliance}%</span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full bg-[#f1f5f9] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#1B4332]" style={{ width: `${kpis.slaCompliance}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Section: Recent Activity + Top Distress */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-white rounded-3xl border border-[#e1e3e2] shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-[#e1e3e2] flex justify-between items-center">
+                  <h3 className="font-bold text-[#191c1c]">Critical Distress Watchlist</h3>
+                  <button onClick={() => setActiveTab('distress')} className="text-[#1B4332] text-xs font-bold hover:underline">View All</button>
+                </div>
+                <div className="divide-y divide-[#e1e3e2]">
+                  {distressData.slice(0, 4).map((d) => (
+                    <div key={d.id} className={`p-4 flex items-center justify-between transition-colors ${d.risk_level === 'CRITICAL' ? 'bg-[#FEF2F2]' : 'hover:bg-[#f8faf9]'}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${d.risk_level === 'CRITICAL' ? 'bg-[#EF4444] text-white' : 'bg-[#f1f5f9] text-[#717973]'}`}>
+                          <HeartPulse className={`w-5 h-5 ${d.risk_level === 'CRITICAL' ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-[#191c1c]">{d.farmer_name}</p>
+                          <p className="text-xs text-[#717973]">{d.taluka}, {d.district}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                          d.risk_level === 'CRITICAL' ? 'bg-[#EF4444] text-white' : 
+                          d.risk_level === 'HIGH' ? 'bg-[#FEE2E2] text-[#EF4444]' : 'bg-[#FEF3C7] text-[#D97706]'
+                        }`}>
+                          {d.risk_level}
+                        </span>
+                        <p className="text-xs font-bold text-[#191c1c] mt-1">Score: {d.score}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-[#e1e3e2] shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-[#e1e3e2]">
+                  <h3 className="font-bold text-[#191c1c]">Intelligence Audit Log</h3>
+                </div>
+                <div className="divide-y divide-[#e1e3e2]">
+                  {dashboardData?.recentActivity?.map((a: any, i: number) => (
+                    <div key={i} className="p-4 flex items-center justify-between hover:bg-[#f8faf9] transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${a.type === 'application' ? 'bg-[#f0fdf4] text-[#1B4332]' : 'bg-[#eff6ff] text-[#3B82F6]'}`}>
+                          {a.type === 'application' ? <FileText className="w-4 h-4" /> : <Info className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-[#191c1c]">{a.label}</p>
+                          <p className="text-[10px] text-[#717973]">{new Date(a.timestamp).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        a.risk === 'HIGH' ? 'bg-[#FEE2E2] text-[#EF4444]' : 
+                        a.risk === 'MEDIUM' ? 'bg-[#FEF3C7] text-[#D97706]' : 'bg-[#f0fdf4] text-[#1B4332]'
+                      }`}>
+                        {a.risk}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'applications' && (
+          <div className="bg-white rounded-3xl border border-[#e1e3e2] shadow-sm overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+            <div className="p-6 border-b border-[#e1e3e2] flex justify-between items-center bg-white sticky top-0 z-10">
+              <div>
+                <h3 className="font-bold text-[#191c1c]">Application Review Queue</h3>
+                <p className="text-xs text-[#717973]">Process pending applications and verify fraud flags</p>
+              </div>
+              <div className="flex gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#717973]" />
+                  <input 
+                    placeholder="Search ID, Name..." 
+                    className="pl-10 pr-4 py-2 border border-[#e1e3e2] rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1B4332]"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#f8faf9] text-[10px] uppercase tracking-widest text-[#717973] font-black border-b border-[#e1e3e2]">
+                    <th className="px-6 py-4">App ID</th>
+                    <th className="px-6 py-4">Farmer Name</th>
+                    <th className="px-6 py-4">Type</th>
+                    <th className="px-6 py-4">District</th>
+                    <th className="px-6 py-4">Risk Level</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#e1e3e2]">
+                  {applications.length === 0 ? (
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-[#717973] text-sm">No applications found</td></tr>
+                  ) : (
+                    applications.map((app) => (
+                      <tr 
+                        key={app.id} 
+                        className={`hover:bg-[#f8faf9] transition-colors ${app.risk_score === 'HIGH' ? 'bg-[#FEF2F2]/50' : ''}`}
+                      >
+                        <td className="px-6 py-4">
+                          <span className="text-[10px] font-mono font-bold text-[#1B4332] bg-[#f0fdf4] px-2 py-1 rounded">
+                            #{app.app_id || app.id.slice(0, 8)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-bold text-[#191c1c]">{app.farmer_name}</p>
+                          <p className="text-[10px] text-[#717973]">{new Date(app.submitted_at).toLocaleDateString()}</p>
+                        </td>
+                        <td className="px-6 py-4 text-xs font-medium text-[#191c1c] capitalize">{app.document_type?.replace(/_/g, ' ')}</td>
+                        <td className="px-6 py-4 text-xs text-[#717973]">{app.district}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${
+                              app.risk_score === 'HIGH' ? 'bg-[#EF4444]' : 
+                              app.risk_score === 'MEDIUM' ? 'bg-[#F59E0B]' : 'bg-[#1B4332]'
+                            }`} />
+                            <span className={`text-[10px] font-bold ${
+                              app.risk_score === 'HIGH' ? 'text-[#EF4444]' : 
+                              app.risk_score === 'MEDIUM' ? 'text-[#D97706]' : 'text-[#1B4332]'
+                            }`}>
+                              {app.risk_score} RISK
+                            </span>
+                            {app.irregularity_flags?.length > 0 && (
+                              <div className="group relative ml-1">
+                                <AlertTriangle className="w-3 h-3 text-[#EF4444] cursor-help" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-[#191c1c] text-white text-[10px] rounded-xl shadow-xl hidden group-hover:block z-20">
+                                  <p className="font-bold mb-1 border-b border-white/20 pb-1">Anomalies Detected:</p>
+                                  <ul className="list-disc pl-3 space-y-1">
+                                    {app.irregularity_flags.map((f: string, idx: number) => (
+                                      <li key={idx} className="capitalize">{f.replace(/_/g, ' ')}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            app.status === 'approved' ? 'bg-[#f0fdf4] text-[#1B4332]' : 
+                            app.status === 'rejected' ? 'bg-[#FEF2F2] text-[#EF4444]' : 'bg-[#eff6ff] text-[#3B82F6]'
+                          }`}>
+                            {app.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            {app.status === 'pending' || app.status === 'held' || app.status === 'in_review' ? (
+                              <>
+                                <button 
+                                  onClick={() => updateAppStatus(app.id, 'approved')}
+                                  className="w-8 h-8 rounded-lg bg-[#f0fdf4] text-[#1B4332] flex items-center justify-center hover:bg-[#1B4332] hover:text-white transition-all shadow-sm"
+                                  title="Approve"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => updateAppStatus(app.id, 'rejected')}
+                                  className="w-8 h-8 rounded-lg bg-[#FEF2F2] text-[#EF4444] flex items-center justify-center hover:bg-[#EF4444] hover:text-white transition-all shadow-sm"
+                                  title="Reject"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : null}
+                            <button className="w-8 h-8 rounded-lg bg-[#f8faf9] text-[#717973] flex items-center justify-center hover:bg-[#e1e3e2] transition-all">
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'distress' && (
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+            <div className="bg-[#1B4332] rounded-3xl p-8 text-white relative overflow-hidden">
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md">
+                    <HeartPulse className="w-6 h-6 text-[#95D5B2] animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Predictive Distress Analysis</h2>
+                    <p className="text-white/70 text-sm">Identifying vulnerable clusters using satellite and grievance markers</p>
+                  </div>
+                </div>
+                <div className="flex gap-8 mt-6">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest opacity-70">Critical Cases</p>
+                    <p className="text-3xl font-black">{distressData.filter(d => d.risk_level === 'CRITICAL').length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest opacity-70">Active Watchlist</p>
+                    <p className="text-3xl font-black">{distressData.length}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {distressData.map((d) => (
+                <div key={d.id} className={`bg-white rounded-3xl border border-[#e1e3e2] p-6 shadow-sm relative overflow-hidden transition-all hover:shadow-md ${d.risk_level === 'CRITICAL' ? 'ring-2 ring-[#EF4444]' : ''}`}>
+                  {d.risk_level === 'CRITICAL' && (
+                    <div className="absolute top-4 right-4 flex items-center gap-1 bg-[#EF4444] text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse uppercase tracking-wider">
+                      Critical Alert
+                    </div>
+                  )}
+                  <p className="text-xs font-bold text-[#717973] uppercase tracking-widest mb-1">{d.district}</p>
+                  <h3 className="text-lg font-black text-[#191c1c] mb-1">{d.farmer_name}</h3>
+                  <p className="text-sm text-[#717973] flex items-center gap-1">
+                    <LayoutDashboard className="w-3 h-3" />
+                    Taluka: {d.taluka}
+                  </p>
+
+                  <div className="mt-6 flex items-end justify-between">
+                    <div>
+                      <p className="text-[10px] text-[#717973] uppercase tracking-widest mb-1">Vulnerability Score</p>
+                      <p className={`text-3xl font-black ${
+                        d.risk_level === 'CRITICAL' ? 'text-[#EF4444]' : 
+                        d.risk_level === 'HIGH' ? 'text-[#D97706]' : 'text-[#1B4332]'
+                      }`}>
+                        {d.score}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                        d.risk_level === 'CRITICAL' ? 'bg-[#EF4444] text-white' : 
+                        d.risk_level === 'HIGH' ? 'bg-[#FEF3C7] text-[#D97706]' : 'bg-[#f0fdf4] text-[#1B4332]'
+                      }`}>
+                        {d.risk_level} Risk
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t border-[#f1f5f9] flex gap-2">
+                    <button className="flex-1 py-2 rounded-xl bg-[#1B4332] text-white text-xs font-bold hover:bg-[#2D6A4F] transition-colors">
+                      Dispatch Aid
+                    </button>
+                    <button className="px-4 py-2 rounded-xl border border-[#e1e3e2] text-[#717973] hover:bg-[#f8faf9] transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function KpiCard({ label, value, icon, trend, up, alert }: any) {
+  return (
+    <div className={`bg-white p-6 rounded-3xl border border-[#e1e3e2] shadow-sm relative overflow-hidden transition-all hover:scale-[1.02] ${alert ? 'ring-2 ring-inset ring-[#EF4444]/20' : ''}`}>
+      <div className="flex justify-between items-start mb-4">
+        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${alert ? 'bg-[#FEF2F2] text-[#EF4444]' : 'bg-[#f0fdf4] text-[#1B4332]'}`}>
+          {icon}
+        </div>
+        <div className={`flex items-center gap-1 text-[10px] font-bold ${up ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+          {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+          {trend}
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-widest font-black text-[#717973] mb-1">{label}</p>
+        <p className="text-3xl font-black text-[#191c1c] tracking-tight">{value}</p>
+      </div>
+      {alert && (
+        <div className="absolute top-0 right-0 w-2 h-full bg-[#EF4444] opacity-50" />
+      )}
+    </div>
+  )
+}
+
+
+--- FILE: D:\PRAGATI\lib\audit.ts ---
+import { SupabaseClient } from '@supabase/supabase-js'
+import type { AuditLogEntry } from '@/types'
+
+/**
+ * Write an entry to the audit log.
+ * Fire-and-forget: errors are logged but never block the calling operation.
+ */
+export async function logAudit(
+  supabase: SupabaseClient,
+  entry: Omit<AuditLogEntry, 'id' | 'created_at'>
+): Promise<void> {
+  try {
+    await supabase.from('audit_log').insert(entry)
+  } catch (err) {
+    // Never let audit logging crash the main operation
+    console.error('[audit] Failed to write log entry:', err)
+  }
+}
+
+/**
+ * Convenience helpers for common audit events
+ */
+export const AuditActions = {
+  applicationCreated: (actorId: string, appId: string) =>
+    ({ actor_id: actorId, action: 'application_created', target_type: 'application' as const, target_id: appId }),
+
+  applicationStatusChanged: (actorId: string, appId: string, oldStatus: string, newStatus: string) =>
+    ({
+      actor_id: actorId,
+      action: 'status_changed',
+      target_type: 'application' as const,
+      target_id: appId,
+      details: { old_status: oldStatus, new_status: newStatus },
+    }),
+
+  grievanceFiled: (actorId: string, grievanceId: string) =>
+    ({ actor_id: actorId, action: 'grievance_filed', target_type: 'grievance' as const, target_id: grievanceId }),
+
+  grievanceStatusChanged: (actorId: string, grievanceId: string, oldStatus: string, newStatus: string) =>
+    ({
+      actor_id: actorId,
+      action: 'grievance_status_changed',
+      target_type: 'grievance' as const,
+      target_id: grievanceId,
+      details: { old_status: oldStatus, new_status: newStatus },
+    }),
+
+  eligibilityChecked: (actorId: string, farmerName: string, matchCount: number) =>
+    ({
+      actor_id: actorId,
+      action: 'eligibility_checked',
+      target_type: 'eligibility_check' as const,
+      target_id: farmerName,
+      details: { matched_count: matchCount },
+    }),
+
+  irregularityDetected: (actorId: string, appId: string, riskScore: string, flagCount: number) =>
+    ({
+      actor_id: actorId,
+      action: 'irregularity_detected',
+      target_type: 'application' as const,
+      target_id: appId,
+      details: { risk_score: riskScore, flag_count: flagCount },
+    }),
+}
+
+
+--- FILE: D:\PRAGATI\lib\claude.ts ---
+import Anthropic from '@anthropic-ai/sdk'
+
+// Lazily initialize — avoids crashing at import time if env var missing during build
+let _client: Anthropic | null = null
+function getClient(): Anthropic {
+  if (!_client) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('Missing ANTHROPIC_API_KEY environment variable.')
+    }
+    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  }
+  return _client
+}
+
+const CLAUDE_MODEL = 'claude-sonnet-4-20250514'
+
+/**
+ * Call Claude and parse the response as typed JSON.
+ * Includes retry logic for transient failures (network, rate-limit).
+ * Strips markdown code fences if Claude wraps output in them.
+ */
+export async function claudeJSON<T>(
+  systemPrompt: string,
+  userContent: string,
+  maxTokens: number = 1024,
+  retries: number = 2
+): Promise<T> {
+  const client = getClient()
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: userContent }],
+        system: systemPrompt,
+      })
+
+      const block = response.content[0]
+      const text = block.type === 'text' ? block.text : ''
+
+      // Strip markdown code fences and any leading/trailing whitespace
+      const clean = text
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```\s*$/i, '')
+        .trim()
+
+      try {
+        return JSON.parse(clean) as T
+      } catch {
+        console.error('[Claude] Invalid JSON response (attempt', attempt + 1, '):', clean.slice(0, 300))
+        if (attempt === retries) {
+          throw new Error(`Claude returned unparseable JSON after ${retries + 1} attempts`)
+        }
+        // Retry — Claude sometimes wraps in text on first try
+        continue
+      }
+    } catch (error: any) {
+      // Don't retry JSON parse failures that we already handle above
+      if (error?.message?.includes('unparseable JSON')) throw error
+
+      // Retry on rate limit (429) or server errors (5xx)
+      const status = error?.status || error?.statusCode
+      if (attempt < retries && (status === 429 || (status >= 500 && status < 600))) {
+        const backoff = Math.pow(2, attempt) * 1000 // 1s, 2s
+        console.warn(`[Claude] Retrying after ${backoff}ms (status ${status})`)
+        await new Promise(r => setTimeout(r, backoff))
+        continue
+      }
+      throw error
+    }
+  }
+
+  throw new Error('Claude call exhausted retries')
+}
+
+// ─── Prompt Library ──────────────────────────────────────────────────────────
+
+export const CLASSIFY_PROMPT = `You are a document classifier for Maharashtra taluka agriculture offices.
+Given OCR-extracted text from a scanned farmer document, classify it and extract key fields.
+
+IMPORTANT: The text may be noisy (OCR artifacts, mixed languages). Focus on keywords:
+- Subsidy/अनुदान → subsidy_application
+- Insurance/विमा/PMFBY → insurance_claim
+- PM-KISAN/enrollment/नोंदणी → scheme_enrollment
+- 7/12/survey/मोजणी → land_record
+- Complaint/तक्रार → grievance
+
+Respond ONLY in valid JSON with NO preamble, NO markdown:
+{
+  "documentType": "subsidy_application" | "insurance_claim" | "scheme_enrollment" | "land_record" | "grievance" | "other",
+  "schemeName": "<string or null>",
+  "claimedAmount": <number or null>,
+  "cropType": "<string or null>",
+  "farmerName": "<string or null>",
+  "confidence": "high" | "medium" | "low",
+  "department": "Subsidy Department" | "Insurance Cell" | "Scheme Registration" | "Land Records" | "Grievance Cell" | "General"
+}`
+
+export const ELIGIBILITY_PROMPT = `You are an agricultural scheme eligibility advisor for Maharashtra, India.
+Given a farmer's profile and a list of potentially matching government schemes,
+determine which schemes this farmer definitively qualifies for.
+
+Rules:
+- Only confirm schemes where ALL eligibility criteria are met by the profile data.
+- If a required field is missing from the profile, mark confidence as "medium" (not enough data to confirm).
+- Use the scheme IDs exactly as provided in the list.
+
+Respond ONLY in valid JSON:
+{ "matched": [{ "schemeId": "<exact ID from list>", "reason": "<plain English, max 20 words>", "confidence": "high" | "medium" }] }`
+
+export const GRIEVANCE_PROMPT = `You are a grievance management system for Maharashtra agriculture offices.
+Analyze the farmer complaint text (may be in Marathi, Hindi, or English) and return structured data.
+
+Priority scale:
+1 = routine query (general information request)
+2 = minor issue (small delay, missing acknowledgement)
+3 = moderate issue (significant delay in subsidy/scheme)
+4 = serious issue (crop damage, failed insurance, financial hardship)
+5 = CRITICAL (drought/crop loss, officer misconduct/bribery, life-threatening distress)
+
+Respond ONLY in valid JSON:
+{
+  "category": "water_supply" | "seed_quality" | "scheme_delay" | "officer_misconduct" | "subsidy_not_received" | "crop_loss" | "other",
+  "priority": <1-5>,
+  "priorityReason": "<why this priority level, max 30 words>",
+  "suggestedDepartment": "<department name>"
+}`
+
+export const PREREJECT_PROMPT = `You are validating an agricultural scheme application for a Maharashtra taluka office.
+Compare the farmer name from the uploaded document text vs the profile name entered by the clerk.
+
+Consider these common patterns in Indian names:
+- Abbreviations: R.B. = Ramesh Baburao
+- Missing middle names: "Patil" vs "Ramesh Patil" 
+- Transliteration variants: "Suresh" vs "Suresh" in Devanagari
+- Father/husband name appended: "Ramesh s/o Baburao"
+- Common suffixes: Shri, Smt, etc.
+
+Respond ONLY in valid JSON:
+{
+  "nameMatch": <true or false>,
+  "confidence": "high" | "medium" | "low",
+  "documentName": "<name found in document or null>",
+  "profileName": "<profile name as given>",
+  "issue": "<description of mismatch or null>"
+}`
+
+export const LEGAL_PROMPT = `You are VakilSaathi, a legal document assistant for Maharashtra agricultural law.
+You understand: Maharashtra Stamp Act schedules, Registration Act, Tenancy and Agricultural Lands Act,
+7/12 extract format, ferfar mutation entries, varas hak (inheritance), standard deed formats.
+
+Analyze the document and flag any clauses that could harm a farmer's interests.
+Pay special attention to:
+- Unusually low sale consideration (possible underpayment)
+- Missing witnesses or registration requirements
+- Unfair termination clauses in tenancy agreements
+- Hidden charges or penalties
+
+Respond ONLY in valid JSON:
+{
+  "documentType": "<type of legal document>",
+  "parties": [{ "role": "<buyer/seller/tenant/landlord/etc>", "name": "<party name>" }],
+  "propertyDetails": { "surveyNumber": "<string or null>", "area": "<string or null>", "location": "<string or null>" },
+  "keyAmount": <number or null>,
+  "clauses": [{ "text": "<original clause text>", "plain": "<simple explanation>", "risk": "standard" | "unusual" | "harmful", "riskReason": "<why risky, or null>" }],
+  "stampDutyCheck": "sufficient" | "insufficient" | "unknown",
+  "registrationRequired": <true or false>,
+  "overallRisk": "low" | "medium" | "high"
+}`
+
+
+--- FILE: D:\PRAGATI\lib\constants.ts ---
+import type { DocumentType, GrievanceCategory } from '@/types'
+
+// ─── SLA Configuration (days) ────────────────────────────────────────────────
+
+export const SLA_CONFIG: Record<DocumentType, number> = {
+  subsidy_application: 7,
+  insurance_claim: 14,
+  scheme_enrollment: 7,
+  land_record: 3,
+  grievance: 7,
+  other: 10,
+}
+
+export const GRIEVANCE_SLA_CONFIG: Record<GrievanceCategory, number> = {
+  water_supply: 3,
+  seed_quality: 5,
+  scheme_delay: 10,
+  officer_misconduct: 2,
+  subsidy_not_received: 7,
+  crop_loss: 5,
+  other: 7,
+}
+
+// ─── Departments ─────────────────────────────────────────────────────────────
+
+export const DEPARTMENTS = [
+  'Subsidy Department',
+  'Insurance Cell',
+  'Scheme Registration',
+  'Land Records',
+  'Grievance Cell',
+  'General',
+] as const
+
+// ─── Maharashtra Districts (all 36) ─────────────────────────────────────────
+
+export const MAHARASHTRA_DISTRICTS = [
+  'Ahmednagar', 'Akola', 'Amravati', 'Aurangabad', 'Beed',
+  'Bhandara', 'Buldhana', 'Chandrapur', 'Dhule', 'Gadchiroli',
+  'Gondia', 'Hingoli', 'Jalgaon', 'Jalna', 'Kolhapur',
+  'Latur', 'Mumbai City', 'Mumbai Suburban', 'Nagpur', 'Nanded',
+  'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani',
+  'Pune', 'Raigad', 'Ratnagiri', 'Sangli', 'Satara',
+  'Sindhudurg', 'Solapur', 'Thane', 'Wardha', 'Washim', 'Yavatmal',
+] as const
+
+// ─── Crop Dropdown Options ───────────────────────────────────────────────────
+
+export const CROP_OPTIONS = [
+  'Rice', 'Wheat', 'Jowar', 'Bajra', 'Maize',
+  'Sugarcane', 'Cotton', 'Soyabean', 'Groundnut',
+  'Tur (Pigeon Pea)', 'Gram (Chana)', 'Onion', 'Grapes',
+  'Pomegranate', 'Banana', 'Mango', 'Orange',
+  'Sunflower', 'Safflower', 'Turmeric', 'Other',
+] as const
+
+// ─── Irrigation Dropdown Options ─────────────────────────────────────────────
+
+export const IRRIGATION_TYPES = [
+  'rainfed', 'well', 'drip', 'canal',
+] as const
+
+// ─── Income Bracket Options ──────────────────────────────────────────────────
+
+export const INCOME_BRACKETS = [
+  'Below ₹1 Lakh',
+  '₹1-2.5 Lakhs',
+  '₹2.5-5 Lakhs',
+  '₹5-10 Lakhs',
+  'Above ₹10 Lakhs',
+] as const
+
+// ─── Category Options ────────────────────────────────────────────────────────
+
+export const CATEGORY_OPTIONS = [
+  'General', 'OBC', 'SC', 'ST',
+] as const
+
+// ─── Application ID Generation ───────────────────────────────────────────────
+
+let _appCounter = 0
+export function generateAppId(): string {
+  const num = Date.now() % 100000 // Last 5 digits of timestamp
+  _appCounter = (_appCounter + 1) % 100
+  const padded = String(num + _appCounter).padStart(5, '0')
+  return `SUB-2026-${padded}`
+}
+
+export function generateGrievanceId(): string {
+  const num = Date.now() % 100000
+  _appCounter = (_appCounter + 1) % 100
+  const padded = String(num + _appCounter).padStart(5, '0')
+  return `GRV-2026-${padded}`
+}
+
+
+--- FILE: D:\PRAGATI\lib\distress.ts ---
+import { SupabaseClient } from '@supabase/supabase-js'
+import { DistressScore, DistressSignal, DistressLevel } from '../types'
+
+export async function computeDistressScore(
+  supabase: SupabaseClient,
+  farmerName: string,
+  district: string,
+  taluka: string,
+  identifier: string // e.g., Aadhaar last 4 or phone
+): Promise<DistressScore> {
+  let score = 0
+  const signals: DistressSignal[] = []
+
+  // 1. Rejections in last 90 days
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const { count: rejectionCount } = await supabase
+    .from('applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('farmer_name', farmerName)
+    .eq('district', district)
+    .eq('status', 'rejected')
+    .gte('submitted_at', ninetyDaysAgo)
+    
+  if (rejectionCount && rejectionCount > 0) {
+    const weight = rejectionCount * 20
+    score += weight
+    signals.push({ type: 'recent_rejections', description: `${rejectionCount} applications rejected in last 90 days`, weight })
+  }
+
+  // 2. SLA breached unresolved grievances
+  const { data: overdueGrievances } = await supabase
+    .from('grievances')
+    .select('id, priority')
+    .eq('farmer_name', farmerName)
+    .eq('district', district)
+    .neq('status', 'resolved')
+    .lt('sla_deadline', new Date().toISOString())
+    
+  if (overdueGrievances && overdueGrievances.length > 0) {
+    const weight = overdueGrievances.length * 25
+    score += weight
+    signals.push({ type: 'sla_breach', description: `${overdueGrievances.length} unresolved grievances past SLA`, weight })
+    
+    // Priority 5 unresolved
+    const p5Count = overdueGrievances.filter(g => g.priority === 5).length
+    if (p5Count > 0) {
+      const p5Weight = p5Count * 40
+      score += p5Weight
+      signals.push({ type: 'critical_grievance', description: `${p5Count} critical priority 5 grievances unresolved`, weight: p5Weight })
+    }
+  }
+
+  // 3. Matched schemes not applied
+  const { data: eligibilityChecks } = await supabase
+    .from('eligibility_checks')
+    .select('matched_schemes')
+    .eq('farmer_name', farmerName)
+    .order('checked_at', { ascending: false })
+    .limit(1)
+    
+  if (eligibilityChecks && eligibilityChecks.length > 0 && eligibilityChecks[0].matched_schemes) {
+    const matchedSchemeIds = (eligibilityChecks[0].matched_schemes as any[]).map(s => s.schemeId)
+    
+    const { data: existingApps } = await supabase
+      .from('applications')
+      .select('scheme_name')
+      .eq('farmer_name', farmerName)
+      
+    const appliedSchemeNames = existingApps?.map(a => a.scheme_name) || []
+    
+    // Rough check: if they matched 3+ schemes but applied for none
+    if (matchedSchemeIds.length > 0 && appliedSchemeNames.length === 0) {
+      score += 15
+      signals.push({ type: 'unclaimed_benefits', description: `Eligible for ${matchedSchemeIds.length} schemes but 0 applications found`, weight: 15 })
+    }
+  }
+
+  // 4. Insurance stuck > 30 days
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { count: stuckInsurance } = await supabase
+    .from('applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('farmer_name', farmerName)
+    .eq('document_type', 'insurance_claim')
+    .in('status', ['pending', 'held', 'in_review'])
+    .lt('submitted_at', thirtyDaysAgo)
+    
+  if (stuckInsurance && stuckInsurance > 0) {
+    const weight = stuckInsurance * 30
+    score += weight
+    signals.push({ type: 'stuck_insurance', description: `${stuckInsurance} insurance claims stuck for > 30 days`, weight })
+  }
+
+  // Determine Risk Level
+  let risk_level: DistressLevel = 'LOW'
+  if (score >= 120) risk_level = 'CRITICAL'
+  else if (score >= 70) risk_level = 'HIGH'
+  else if (score >= 30) risk_level = 'MEDIUM'
+
+  return {
+    id: '', // Will be generated by DB
+    farmer_identifier: identifier,
+    farmer_name: farmerName,
+    district,
+    taluka,
+    score,
+    risk_level,
+    signals,
+    computed_at: new Date().toISOString()
+  }
+}
+
+
+--- FILE: D:\PRAGATI\lib\fraud.ts ---
+import { SupabaseClient } from '@supabase/supabase-js'
+import type { NewApplication, IrregularityResult, IrregularityFlag } from '@/types'
+
+/**
+ * Deterministic irregularity detection engine.
+ * 
+ * Runs 5 checks in parallel (no AI cost, ~200ms total):
+ *  1. Duplicate Aadhaar — same last-4 in same district
+ *  2. Claim amount anomaly — >2.5x district average for same doc type
+ *  3. Village cluster — abnormal daily submission volume
+ *  4. Duplicate land survey — same Gat/Survey No in existing applications
+ *  5. Same-scheme duplicate — same person applying for same scheme twice
+ */
+export async function checkIrregularities(
+  supabase: SupabaseClient,
+  application: NewApplication
+): Promise<IrregularityResult> {
+  // Run all checks in parallel for speed
+  const [
+    aadhaarFlags,
+    amountFlags,
+    clusterFlags,
+    landFlags,
+    schemeFlags,
+  ] = await Promise.all([
+    checkDuplicateAadhaar(supabase, application),
+    checkAmountAnomaly(supabase, application),
+    checkVillageCluster(supabase, application),
+    checkDuplicateLand(supabase, application),
+    checkDuplicateScheme(supabase, application),
+  ])
+
+  const flags: IrregularityFlag[] = [
+    ...aadhaarFlags,
+    ...amountFlags,
+    ...clusterFlags,
+    ...landFlags,
+    ...schemeFlags,
+  ]
+
+  const highFlags = flags.filter(f => f.severity === 'high')
+  const riskScore = highFlags.length > 0 ? 'HIGH' : flags.length > 0 ? 'MEDIUM' : 'LOW'
+
+  return { riskScore, flags } as IrregularityResult
+}
+
+// ─── Check 1: Duplicate Aadhaar ─────────────────────────────────────────────
+
+async function checkDuplicateAadhaar(
+  supabase: SupabaseClient,
+  app: NewApplication
+): Promise<IrregularityFlag[]> {
+  if (!app.aadhaar_last4 || !app.district) return []
+
+  const { data } = await supabase
+    .from('applications')
+    .select('id, app_id, farmer_name, scheme_name')
+    .eq('aadhaar_last4', app.aadhaar_last4)
+    .eq('district', app.district)
+    .neq('status', 'rejected')
+    .limit(5)
+
+  if (!data || data.length === 0) return []
+
+  // If same aadhaar + different name → high severity (possible identity theft)
+  const differentName = data.find(
+    d => d.farmer_name.toLowerCase().trim() !== app.farmer_name.toLowerCase().trim()
+  )
+
+  if (differentName) {
+    return [{
+      type: 'duplicate_aadhaar',
+      detail: `Same Aadhaar last-4 used by "${differentName.farmer_name}" in ${differentName.app_id}`,
+      severity: 'high',
+      matched_app_id: differentName.app_id,
+    }]
+  }
+
+  // Same aadhaar + same name → just informational (same farmer, multiple apps)
+  if (data.length >= 3) {
+    return [{
+      type: 'duplicate_aadhaar',
+      detail: `${data.length} existing applications from same Aadhaar (${app.aadhaar_last4})`,
+      severity: 'medium',
+    }]
+  }
+
+  return []
+}
+
+// ─── Check 2: Claim Amount Anomaly ──────────────────────────────────────────
+
+async function checkAmountAnomaly(
+  supabase: SupabaseClient,
+  app: NewApplication
+): Promise<IrregularityFlag[]> {
+  if (!app.claimed_amount || !app.document_type || !app.district) return []
+
+  const { data } = await supabase
+    .from('applications')
+    .select('claimed_amount')
+    .eq('district', app.district)
+    .eq('document_type', app.document_type)
+    .not('claimed_amount', 'is', null)
+
+  if (!data || data.length < 5) return [] // Not enough data for statistical baseline
+
+  const amounts = data.map(r => r.claimed_amount as number).sort((a, b) => a - b)
+  const avg = amounts.reduce((s, v) => s + v, 0) / amounts.length
+
+  // Also compute median for more robust comparison
+  const median = amounts[Math.floor(amounts.length / 2)]
+  const threshold = Math.min(avg * 2.5, median * 4) // Use whichever is lower
+
+  if (app.claimed_amount > threshold) {
+    return [{
+      type: 'amount_anomaly',
+      detail: `Claim ₹${app.claimed_amount.toLocaleString('en-IN')} vs district avg ₹${Math.round(avg).toLocaleString('en-IN')} (median ₹${Math.round(median).toLocaleString('en-IN')})`,
+      severity: 'high',
+    }]
+  }
+
+  return []
+}
+
+// ─── Check 3: Village Cluster ───────────────────────────────────────────────
+
+async function checkVillageCluster(
+  supabase: SupabaseClient,
+  app: NewApplication
+): Promise<IrregularityFlag[]> {
+  if (!app.village) return []
+
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { count } = await supabase
+    .from('applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('village', app.village)
+    .gte('submitted_at', yesterday)
+
+  if (count && count >= 10) {
+    return [{
+      type: 'village_cluster',
+      detail: `${count} applications from ${app.village} in last 24 hours`,
+      severity: count >= 20 ? 'high' : 'medium',
+    }]
+  }
+
+  return []
+}
+
+// ─── Check 4: Duplicate Land Survey Number ──────────────────────────────────
+
+async function checkDuplicateLand(
+  supabase: SupabaseClient,
+  app: NewApplication
+): Promise<IrregularityFlag[]> {
+  if (!app.extracted_text) return []
+
+  // Match Maharashtra survey number patterns: Gat No. 45, Survey No 123/2, Gut No 67, etc.
+  const surveyMatch = app.extracted_text.match(
+    /(?:gat|survey|sur|gut|s\.no)[\s.]*(?:no|number|num|n)?[\s.]*(\d+(?:\/\d+)?)/i
+  )
+
+  if (!surveyMatch?.[1]) return []
+
+  const surveyNum = surveyMatch[1]
+
+  const { data } = await supabase
+    .from('applications')
+    .select('id, app_id, farmer_name')
+    .ilike('extracted_text', `%${surveyNum}%`)
+    .neq('status', 'rejected')
+    .limit(3)
+
+  if (!data || data.length === 0) return []
+
+  // If different farmer name → higher severity
+  const differentOwner = data.find(
+    d => d.farmer_name.toLowerCase().trim() !== app.farmer_name.toLowerCase().trim()
+  )
+
+  if (differentOwner) {
+    return [{
+      type: 'possible_duplicate_land_record',
+      detail: `Survey/Gat No ${surveyNum} also claimed by "${differentOwner.farmer_name}" in ${differentOwner.app_id}`,
+      severity: 'high',
+      matched_app_id: differentOwner.app_id,
+    }]
+  }
+
+  return [{
+    type: 'possible_duplicate_land_record',
+    detail: `Survey/Gat No ${surveyNum} appears in ${data.length} existing application(s)`,
+    severity: 'medium',
+    matched_app_id: data[0].app_id,
+  }]
+}
+
+// ─── Check 5: Same-Scheme Duplicate Application ─────────────────────────────
+
+async function checkDuplicateScheme(
+  supabase: SupabaseClient,
+  app: NewApplication
+): Promise<IrregularityFlag[]> {
+  if (!app.scheme_name || !app.farmer_name) return []
+
+  const { data } = await supabase
+    .from('applications')
+    .select('id, app_id, status, submitted_at')
+    .eq('farmer_name', app.farmer_name)
+    .eq('scheme_name', app.scheme_name)
+    .neq('status', 'rejected')
+    .limit(3)
+
+  if (!data || data.length === 0) return []
+
+  // Active (non-rejected) application for same scheme exists
+  const activeApp = data.find(d => ['pending', 'in_review', 'approved'].includes(d.status))
+
+  if (activeApp) {
+    return [{
+      type: 'duplicate_scheme_application',
+      detail: `Already has ${activeApp.status} application for "${app.scheme_name}" (${activeApp.app_id})`,
+      severity: activeApp.status === 'approved' ? 'high' : 'medium',
+      matched_app_id: activeApp.app_id,
+    }]
+  }
+
+  return []
+}
+
+
+--- FILE: D:\PRAGATI\lib\gemini.ts ---
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+// Initialize the Gemini client
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '')
+
+// Use Gemini 3.1 Flash Lite Preview as requested (Free & Advanced)
+const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview'
+
+/**
+ * Call Gemini and parse the response as typed JSON.
+ * Includes cleaning of markdown fences.
+ */
+export async function geminiJSON<T>(
+  systemPrompt: string,
+  userContent: string
+): Promise<T> {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  if (!apiKey) {
+    throw new Error('Missing GOOGLE_GENERATIVE_AI_API_KEY environment variable.')
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: GEMINI_MODEL,
+      systemInstruction: systemPrompt,
+    })
+
+    const result = await model.generateContent(userContent)
+    const response = await result.response
+    const text = response.text()
+
+    // Clean markdown code blocks
+    const clean = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim()
+
+    return JSON.parse(clean) as T
+  } catch (error: any) {
+    console.error('[Gemini] Generation failed:', error)
+    throw error
+  }
+}
+
+
+--- FILE: D:\PRAGATI\lib\ocr.ts ---
+import { PDFParse } from 'pdf-parse'
+import Tesseract from 'tesseract.js'
+
+export interface OcrResult {
+  text: string
+  method: 'pdf-parse' | 'tesseract' | 'pdf-parse+tesseract-fallback'
+  confidence: number // 0-100 estimate
+}
+
+/**
+ * Extract text from a file buffer. Supports PDF (digital + scanned) and images.
+ *
+ * Strategy:
+ *  - Digital PDFs → pdf-parse v2 (fast, accurate)
+ *  - Scanned PDFs → pdf-parse first; if <50 chars, fallback to Tesseract
+ *  - JPG/PNG → Tesseract directly with eng+mar language pack
+ */
+export async function extractText(
+  fileBuffer: Buffer,
+  mimeType: string
+): Promise<OcrResult> {
+  if (mimeType === 'application/pdf') {
+    return extractFromPdf(fileBuffer)
+  }
+
+  if (mimeType.startsWith('image/')) {
+    return extractFromImage(fileBuffer)
+  }
+
+  throw new Error(`Unsupported MIME type for OCR: ${mimeType}`)
+}
+
+async function extractFromPdf(buffer: Buffer): Promise<OcrResult> {
+  try {
+    // pdf-parse v2 TS types mark some methods as private even though they're 
+    // part of the public API. Cast through `any` to access them safely.
+    const parser: any = new PDFParse({ verbosity: 0 })
+    await parser.load(buffer)
+
+    const text: string = (await parser.getText() || '').trim()
+    parser.destroy()
+
+    // If meaningful text was extracted, PDF has embedded text
+    if (text.length >= 50) {
+      return { text, method: 'pdf-parse', confidence: 95 }
+    }
+
+    // Scanned PDF — fallback to Tesseract
+    console.info('[OCR] PDF has <50 chars from pdf-parse, falling back to Tesseract')
+    const tesseractResult = await runTesseract(buffer)
+    return {
+      text: tesseractResult.text,
+      method: 'pdf-parse+tesseract-fallback',
+      confidence: tesseractResult.confidence,
+    }
+  } catch (err) {
+    // pdf-parse crashed entirely (corrupted PDF, etc.) — pure Tesseract
+    console.warn('[OCR] pdf-parse failed, using Tesseract:', (err as Error).message)
+    const tesseractResult = await runTesseract(buffer)
+    return {
+      text: tesseractResult.text,
+      method: 'tesseract',
+      confidence: tesseractResult.confidence,
+    }
+  }
+}
+
+async function extractFromImage(buffer: Buffer): Promise<OcrResult> {
+  const result = await runTesseract(buffer)
+  return { text: result.text, method: 'tesseract', confidence: result.confidence }
+}
+
+async function runTesseract(
+  buffer: Buffer
+): Promise<{ text: string; confidence: number }> {
+  const { data } = await Tesseract.recognize(buffer, 'eng+mar')
+  return {
+    text: (data.text || '').trim(),
+    confidence: data.confidence ?? 50,
+  }
+}
+
+/**
+ * Determine the simple file type key for the DB `file_type` column.
+ */
+export function getFileTypeKey(mimeType: string): 'pdf' | 'jpg' | 'png' | null {
+  if (mimeType === 'application/pdf') return 'pdf'
+  if (mimeType === 'image/jpeg') return 'jpg'
+  if (mimeType === 'image/png') return 'png'
+  return null
+}
+
+
+--- FILE: D:\PRAGATI\lib\schemes.ts ---
+import type { Scheme, FarmerProfile } from '@/types'
+
+export const SCHEMES: Scheme[] = [
+  {
+    id: 'pm-kisan',
+    name: 'PM-KISAN',
+    nameMarathi: 'पीएम-किसान',
+    benefit: 'Income support',
+    benefitAmount: 'Rs. 6,000/yr',
+    eligibility: {
+      maxLandAcres: 5, // Actually 2 hectares (~5 acres) for small/marginal
+    },
+    requiredDocs: ['Aadhaar', 'Bank Passbook', 'Land Record (7/12)'],
+    department: 'Subsidy Department'
+  },
+  {
+    id: 'namo-shetkari',
+    name: 'Namo Shetkari Maha Samman Nidhi',
+    nameMarathi: 'नमो शेतकरी महासन्मान निधी',
+    benefit: 'Income support matching PM-KISAN',
+    benefitAmount: 'Rs. 6,000/yr',
+    eligibility: {
+      states: ['Maharashtra']
+    },
+    requiredDocs: ['Aadhaar', 'Bank Passbook', 'PM-KISAN Registration'],
+    department: 'Subsidy Department'
+  },
+  {
+    id: 'pmfby',
+    name: 'Pradhan Mantri Fasal Bima Yojana (PMFBY)',
+    nameMarathi: 'प्रधानमंत्री पीक विमा योजना',
+    benefit: 'Crop insurance',
+    benefitAmount: 'Varies by crop loss',
+    eligibility: {
+      requiresKCC: true
+    },
+    requiredDocs: ['Aadhaar', 'Bank Passbook', 'Land Record (7/12)', 'Crop Sowing Certificate'],
+    department: 'Insurance Cell'
+  },
+  {
+    id: 'per-drop-more-crop',
+    name: 'Per Drop More Crop',
+    nameMarathi: 'प्रति थेंब अधिक पीक',
+    benefit: 'Irrigation equipment subsidy',
+    benefitAmount: '50-55% subsidy',
+    eligibility: {
+      irrigationTypes: ['rainfed', 'well', 'canal']
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', 'Quotation for equipment'],
+    department: 'Subsidy Department'
+  },
+  {
+    id: 'shc',
+    name: 'Soil Health Card Scheme',
+    nameMarathi: 'मृदा आरोग्य पत्रिका योजना',
+    benefit: 'Free soil testing',
+    benefitAmount: 'Free',
+    eligibility: {},
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)'],
+    department: 'General'
+  },
+  {
+    id: 'kcc',
+    name: 'Kisan Credit Card',
+    nameMarathi: 'किसान क्रेडिट कार्ड',
+    benefit: 'Revolving credit',
+    benefitAmount: 'Up to Rs. 3 Lakhs at 4%',
+    eligibility: {},
+    requiredDocs: ['Aadhaar', 'PAN Card', 'Land Record (7/12)', 'Passport Photo'],
+    department: 'Scheme Registration'
+  },
+  {
+    id: 'aif',
+    name: 'Agri Infrastructure Fund',
+    nameMarathi: 'कृषी पायाभूत सुविधा निधी',
+    benefit: 'Interest subvention',
+    benefitAmount: '3% subvention',
+    eligibility: {},
+    requiredDocs: ['Aadhaar', 'DPR (Detailed Project Report)', 'Bank Loan Sanction'],
+    department: 'Scheme Registration'
+  },
+  {
+    id: 'nmeo',
+    name: 'National Mission on Edible Oils',
+    nameMarathi: 'राष्ट्रीय खाद्य तेल अभियान',
+    benefit: 'Grant for oilseed cultivation',
+    benefitAmount: 'Rs. 10,000/acre/yr',
+    eligibility: {
+      crops: ['Soyabean', 'Groundnut', 'Sunflower', 'Safflower']
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', 'Bank Passbook'],
+    department: 'Subsidy Department'
+  },
+  {
+    id: 'pm-kmy',
+    name: 'PM Kisan Maandhan Yojana',
+    nameMarathi: 'पीएम किसान मानधन योजना',
+    benefit: 'Pension after age 60',
+    benefitAmount: 'Rs. 3,000/month',
+    eligibility: {
+      minAge: 18,
+      maxAge: 40,
+      maxLandAcres: 5
+    },
+    requiredDocs: ['Aadhaar', 'Bank Passbook'],
+    department: 'Scheme Registration'
+  },
+  {
+    id: 'rkvy',
+    name: 'Rashtriya Krishi Vikas Yojana',
+    nameMarathi: 'राष्ट्रीय कृषी विकास योजना',
+    benefit: 'Grants for agri infra',
+    benefitAmount: 'Project-based',
+    eligibility: {},
+    requiredDocs: ['Aadhaar', 'Project Proposal', 'Land Record (7/12)'],
+    department: 'Scheme Registration'
+  }
+]
+
+/**
+ * Pre-filter schemes based on hard eligibility rules.
+ * 
+ * Design principle: If the profile is MISSING a field that a scheme requires,
+ * we INCLUDE the scheme (let Claude reason about it with "medium" confidence).
+ * We only EXCLUDE if we have definitive evidence of ineligibility.
+ * 
+ * Returns: { eligible: Scheme[], excluded: ExcludedScheme[] }
+ */
+export interface ExcludedScheme {
+  id: string
+  name: string
+  reason: string
+}
+
+export interface PreFilterResult {
+  eligible: Scheme[]
+  excluded: ExcludedScheme[]
+}
+
+export function preFilterSchemes(profile: FarmerProfile): PreFilterResult {
+  const eligible: Scheme[] = []
+  const excluded: ExcludedScheme[] = []
+
+  for (const scheme of SCHEMES) {
+    const { eligibility } = scheme
+    let reason: string | null = null
+
+    // Land size checks — only exclude if we HAVE the data and it fails
+    if (eligibility.maxLandAcres && profile.landSize !== undefined && profile.landSize > eligibility.maxLandAcres) {
+      reason = `Land size ${profile.landSize} acres exceeds max ${eligibility.maxLandAcres} acres`
+    }
+    if (eligibility.minLandAcres && profile.landSize !== undefined && profile.landSize < eligibility.minLandAcres) {
+      reason = `Land size ${profile.landSize} acres below min ${eligibility.minLandAcres} acres`
+    }
+
+    // Age checks
+    if (eligibility.minAge && profile.age !== undefined && profile.age < eligibility.minAge) {
+      reason = `Age ${profile.age} below minimum ${eligibility.minAge}`
+    }
+    if (eligibility.maxAge && profile.age !== undefined && profile.age > eligibility.maxAge) {
+      reason = `Age ${profile.age} above maximum ${eligibility.maxAge}`
+    }
+
+    // Boolean prerequisite checks — only exclude if explicitly false
+    if (eligibility.requiresKCC && profile.hasKCC === false) {
+      reason = 'Requires Kisan Credit Card (KCC)'
+    }
+    if (eligibility.requiresSHC && profile.hasSHC === false) {
+      reason = 'Requires Soil Health Card (SHC)'
+    }
+
+    // Crop checks — only exclude if profile HAS a crop and it doesn't match
+    if (eligibility.crops && profile.primaryCrop && !eligibility.crops.includes(profile.primaryCrop)) {
+      reason = `Crop "${profile.primaryCrop}" not in eligible list: ${eligibility.crops.join(', ')}`
+    }
+
+    // Irrigation checks — only exclude if profile HAS irrigation type and it doesn't match
+    if (eligibility.irrigationTypes && profile.irrigationType && !eligibility.irrigationTypes.includes(profile.irrigationType)) {
+      reason = `Irrigation type "${profile.irrigationType}" not eligible`
+    }
+
+    if (reason) {
+      excluded.push({ id: scheme.id, name: scheme.name, reason })
+    } else {
+      eligible.push(scheme)
+    }
+  }
+
+  return { eligible, excluded }
+}
+
+/**
+ * Quick count of how many schemes a profile might be eligible for.
+ * Useful for distress scoring and dashboard summaries.
+ */
+export function countEligibleSchemes(profile: FarmerProfile): number {
+  return preFilterSchemes(profile).eligible.length
+}
+
+
+--- FILE: D:\PRAGATI\lib\talukas.ts ---
+export const MAHARASHTRA_DATA: Record<string, string[]> = {
+  "Pune": [
+    "Haveli", "Khed", "Junnar", "Ambegaon", "Shirur", "Daund", "Indapur", 
+    "Baramati", "Purandar", "Bhor", "Velhe", "Mulshi", "Maval"
+  ],
+  "Mumbai City": ["Mumbai City"],
+  "Mumbai Suburban": ["Andheri", "Borivali", "Kurla"],
+  "Nagpur": [
+    "Nagpur Urban", "Nagpur Rural", "Kamptee", "Hingna", "Katol", "Narkhed", 
+    "Savner", "Kalmeshwar", "Ramtek", "Mauda", "Kuhi", "Umred", "Bhiwapur"
+  ],
+  "Nashik": [
+    "Nashik", "Sinnar", "Igatpuri", "Trimbakeshwar", "Niphad", "Yeola", 
+    "Nandgaon", "Chandwad", "Kalwan", "Baglan", "Surgana", "Peint", "Deola"
+  ],
+  " छत्रपती संभाजीनगर (Aurangabad)": [
+    "Aurangabad", "Paithan", "Gangapur", "Vaijapur", "Kannad", "Khuldabad", 
+    "Sillod", "Soegaon", "Phulambri"
+  ],
+  "Thane": ["Thane", "Kalyan", "Murbad", "Bhiwandi", "Shahapur", "Ulhasnagar", "Ambarnath"],
+  "Palghar": ["Palghar", "Vada", "Vikramgad", "Jawhar", "Mokhada", "Dahanu", "Talasari", "Vasai"],
+  "Raigad": [
+    "Alibag", "Pen", "Murud", "Panvel", "Uran", "Karjat", "Khalapur", "Mangaon", 
+    "Rohini", "Tala", "Mahad", "Poladpur", "Shrivardhan", "Mhasala", "Sudhagad"
+  ],
+  "Ratnagiri": ["Ratnagiri", "Sangameshwar", "Lanja", "Rajapur", "Chiplun", "Guhagar", "Dapoli", "Mandangad", "Khed"],
+  "Solapur": [
+    "Solapur North", "Solapur South", "Barshi", "Akkalkot", "Mohol", "Mangalvedhe", 
+    "Pandharpur", "Sangola", "Madha", "Karmala", "Malshiras"
+  ],
+  "Satara": [
+    "Satara", "Wai", "Khandala", "Koregaon", "Phaltan", "Man", "Khatav", 
+    "Karad", "Patan", "Jaoli", "Mahabaleshwar"
+  ],
+  "Ahmednagar": [
+    "Ahmednagar", "Rahuri", "Shrirampur", "Nevasa", "Shevgaon", "Pathardi", 
+    "Jamkhed", "Karjat", "Shrigonda", "Parner", "Sangamner", "Akole", "Kopargaon"
+  ],
+  "Amravati": [
+    "Amravati", "Bhatkuli", "Nandgaon Khandeshwar", "Chandur Railway", 
+    "Dhamangaon Railway", "Morshi", "Warud", "Achalpur", "Chandurbazar", 
+    "Anjangaon Surji", "Daryapur", "Chikhaldara", "Dharni"
+  ],
+  "Latur": ["Latur", "Udgir", "Ahmedpur", "Nilanga", "Ausa", "Chakaur", "Renapur", "Deoni", "Shirur Anantpal", "Jalkot"]
+};
+
+
+--- FILE: D:\PRAGATI\lib\supabase\client.ts ---
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+
+--- FILE: D:\PRAGATI\lib\supabase\server.ts ---
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Called from Server Component - safe to ignore
+          }
+        },
+      },
+    }
+  )
+}
+
+
+--- FILE: D:\PRAGATI\scratch\check-state.js ---
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function check() {
+  const { data: { users } } = await supabase.auth.admin.listUsers()
+  console.log('Total users in Auth:', users.length)
+  users.forEach(u => console.log(' - ', u.email))
+  
+  const { data: profiles } = await supabase.from('profiles').select('id, full_name, role')
+  console.log('Total profiles:', profiles?.length)
+  profiles?.forEach(p => console.log(' - ', p.id, p.role))
+}
+
+check()
+
+
+--- FILE: D:\PRAGATI\scratch\cleanup-db.js ---
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function clearProfiles() {
+  console.log('Clearing profiles and auth users...')
+  
+  // 1. Delete from profiles
+  const { error: profErr } = await supabase.from('profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  if (profErr) console.error('Error clearing profiles:', profErr.message)
+
+  // 2. Delete from auth.users (just in case they are there)
+  const { data: { users } } = await supabase.auth.admin.listUsers()
+  for (const user of users) {
+    if (user.email.includes('pragati.demo')) {
+      await supabase.auth.admin.deleteUser(user.id)
+    }
+  }
+
+  console.log('Database cleared of demo users. Now running seed...')
+}
+
+clearProfiles()
+
+
+--- FILE: D:\PRAGATI\scratch\debug-trigger.js ---
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function debugTrigger() {
+  console.log('Attempting to create user manually to see DB error...')
+  try {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: 'test@debug.demo',
+      password: 'password123',
+      email_confirm: true,
+      user_metadata: { full_name: 'Debug User', role: 'clerk' }
+    })
+    
+    if (error) {
+      console.error('Auth Error:', error.message)
+      if (error.message.includes('Database error')) {
+        console.log('Confirmed: Trigger or Constraint is failing.')
+      }
+    } else {
+      console.log('Success! User created:', data.user.id)
+    }
+  } catch (e) {
+    console.error('Exception:', e.message)
+  }
+}
+
+debugTrigger()
+
+
+--- FILE: D:\PRAGATI\scratch\reset-users.js ---
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function resetUsers() {
+  console.log('Fetching users...')
+  const { data: { users }, error } = await supabase.auth.admin.listUsers()
+  
+  if (error) {
+    console.error('Error listing users:', error.message)
+    return
+  }
+
+  for (const user of users) {
+    if (user.email === 'clerk@pragati.demo' || user.email === 'officer@pragati.demo') {
+      console.log(`Deleting existing user: ${user.email}`)
+      await supabase.auth.admin.deleteUser(user.id)
+    }
+  }
+  
+  console.log('Reset complete. You can now run the seed script again.')
+}
+
+resetUsers()
+
+
+--- FILE: D:\PRAGATI\scratch\test-gemini.js ---
+require('dotenv').config({ path: 'd:/PRAGATI/.env.local' });
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+async function testGemini3() {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
+  console.log('Testing gemini-3.1-flash-lite-preview...');
+  try {
+    const result = await model.generateContent('Hi, say "Gemini 3 is active" if you hear me.');
+    console.log('Success:', result.response.text());
+  } catch (e) {
+    console.log('Error:', e.message);
+  }
+}
+
+testGemini3();
+
+
+--- FILE: D:\PRAGATI\scratch\test-login.js ---
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+async function testLogin() {
+  console.log('Testing Clerk login...')
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: 'clerk@pragati.demo',
+    password: 'clerk123'
+  })
+
+  if (error) {
+    console.error('Login failed:', error.message)
+  } else {
+    console.log('Login successful! User ID:', data.user.id)
+  }
+}
+
+testLogin()
+
+
+--- FILE: D:\PRAGATI\scripts\seed.js ---
+/**
+ * PRAGATI AI — Demo Seed Script
+ * 
+ * Usage: node scripts/seed.js
+ * Requires: .env.local with NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
+ * 
+ * Creates:
+ * - 2 demo auth users (clerk + officer) with profiles
+ * - 20 realistic applications (varied statuses, 3 HIGH risk)
+ * - 10 grievances (2 overdue, 1 escalated, varied priorities)
+ * - 3 distress scores (CRITICAL, HIGH, HIGH)
+ */
+
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing env vars. Copy .env.local.example to .env.local and fill in values.')
+  process.exit(1)
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+// Realistic Maharashtra farmer names
+const FARMERS = [
+  'Ramesh Baburao Patil', 'Suresh Dattatray Deshmukh', 'Vikas Ganesh Shinde',
+  'Anil Shankar More', 'Pravin Rajendra Jadhav', 'Deepak Vishnu Pawar',
+  'Sanjay Ramdas Kale', 'Ganesh Pandurang Thorat', 'Rajesh Namdev Bhosale',
+  'Ashok Balasaheb Gaikwad', 'Vijay Keshav Nikam', 'Manoj Shivaji Mane',
+  'Sachin Hanumant Kadam', 'Nitin Eknath Chavan', 'Rahul Dnyandeo Salunke',
+  'Santosh Madhav Sonawane', 'Dnyaneshwar Tukaram Wagh', 'Yogesh Anant Lokhande',
+  'Amol Vitthal Deshpande', 'Prashant Ramchandra Kulkarni',
+]
+
+const VILLAGES = [
+  'Shirur', 'Khed', 'Haveli', 'Baramati', 'Indapur', 'Daund',
+  'Junnar', 'Ambegaon', 'Maval', 'Mulshi', 'Purandar', 'Bhor',
+]
+
+const TALUKAS = [
+  'Shirur', 'Khed', 'Haveli', 'Baramati', 'Indapur', 'Daund',
+]
+
+async function createDemoUsers() {
+  console.log('Creating demo users...')
+
+  // Create clerk user
+  const { data: clerkAuth, error: clerkErr } = await supabase.auth.admin.createUser({
+    email: 'clerk@pragati.demo',
+    password: 'clerk123',
+    email_confirm: true,
+    user_metadata: { full_name: 'Rajiv Kumar (Clerk)', role: 'clerk' },
+  })
+  if (clerkErr && !clerkErr.message.includes('already')) {
+    console.error('Clerk creation error:', clerkErr.message)
+  }
+
+  // Create officer user
+  const { data: officerAuth, error: officerErr } = await supabase.auth.admin.createUser({
+    email: 'officer@pragati.demo',
+    password: 'officer123',
+    email_confirm: true,
+    user_metadata: { full_name: 'Dr. Sunil Patil (TAO)', role: 'officer' },
+  })
+  if (officerErr && !officerErr.message.includes('already')) {
+    console.error('Officer creation error:', officerErr.message)
+  }
+
+  const clerkId = clerkAuth?.user?.id
+  const officerId = officerAuth?.user?.id
+
+  console.log(`  Clerk ID: ${clerkId || 'already exists'}`)
+  console.log(`  Officer ID: ${officerId || 'already exists'}`)
+  console.log('  Login: clerk@pragati.demo / clerk123')
+  console.log('  Login: officer@pragati.demo / officer123')
+
+  return { clerkId, officerId }
+}
+
+async function seedApplications(clerkId) {
+  console.log('Seeding applications...')
+
+  const docTypes = ['subsidy_application', 'insurance_claim', 'scheme_enrollment', 'land_record']
+  const schemes = ['PM-KISAN', 'PMFBY', 'Namo Shetkari', 'Per Drop More Crop', 'KCC', null]
+
+  const applications = []
+
+  for (let i = 0; i < 20; i++) {
+    const farmer = FARMERS[i]
+    const village = VILLAGES[i % VILLAGES.length]
+    const taluka = TALUKAS[i % TALUKAS.length]
+    const docType = docTypes[i % docTypes.length]
+    const aadhaar = String(1000 + i + Math.floor(Math.random() * 8000)).slice(0, 4)
+
+    let status, riskScore, irregularityFlags
+
+    if (i === 1) {
+      // HIGH risk — duplicate aadhaar
+      status = 'held'
+      riskScore = 'HIGH'
+      irregularityFlags = [
+        { type: 'duplicate_aadhaar', detail: 'Matches SUB-2026-00001 (Ramesh Baburao Patil)', severity: 'high', matched_app_id: 'SUB-2026-00001' }
+      ]
+    } else if (i === 5) {
+      // HIGH risk — amount anomaly
+      status = 'held'
+      riskScore = 'HIGH'
+      irregularityFlags = [
+        { type: 'amount_anomaly', detail: 'Claim ₹85,000 vs district avg ₹18,000', severity: 'high' }
+      ]
+    } else if (i === 12) {
+      // HIGH risk — village cluster + duplicate land
+      status = 'held'
+      riskScore = 'HIGH'
+      irregularityFlags = [
+        { type: 'village_cluster', detail: '14 applications from Baramati today', severity: 'medium' },
+        { type: 'possible_duplicate_land_record', detail: 'Survey/Gat No 123/2 might match SUB-2026-00003', severity: 'medium', matched_app_id: 'SUB-2026-00003' },
+        { type: 'duplicate_aadhaar', detail: 'Matches SUB-2026-00008', severity: 'high' }
+      ]
+    } else if (i % 5 === 0) {
+      status = 'approved'
+      riskScore = 'LOW'
+      irregularityFlags = []
+    } else if (i % 7 === 0) {
+      status = 'rejected'
+      riskScore = 'LOW'
+      irregularityFlags = []
+    } else if (i % 4 === 0) {
+      status = 'in_review'
+      riskScore = 'MEDIUM'
+      irregularityFlags = [
+        { type: 'village_cluster', detail: `${8 + i % 5} applications from ${village} today`, severity: 'medium' }
+      ]
+    } else {
+      status = 'pending'
+      riskScore = 'LOW'
+      irregularityFlags = []
+    }
+
+    applications.push({
+      app_id: `SUB-2026-${String(i + 1).padStart(5, '0')}`,
+      farmer_name: farmer,
+      aadhaar_last4: aadhaar,
+      village,
+      taluka,
+      district: 'Pune',
+      document_type: docType,
+      scheme_name: schemes[i % schemes.length],
+      claimed_amount: docType === 'subsidy_application' ? 6000 + (i * 500) : (docType === 'insurance_claim' ? 15000 + (i * 3000) : null),
+      status,
+      risk_score: riskScore,
+      irregularity_flags: irregularityFlags,
+      department: docType === 'subsidy_application' ? 'Subsidy Department' : 
+                  docType === 'insurance_claim' ? 'Insurance Cell' : 
+                  docType === 'scheme_enrollment' ? 'Scheme Registration' : 'Land Records',
+      submitted_by: clerkId || null,
+      submitted_at: new Date(Date.now() - (20 - i) * 86400000 * Math.random()).toISOString(),
+    })
+  }
+
+  const { error } = await supabase.from('applications').insert(applications)
+  if (error) console.error('Application seed error:', error.message)
+  else console.log(`  Inserted ${applications.length} applications`)
+}
+
+async function seedGrievances(clerkId) {
+  console.log('Seeding grievances...')
+
+  const grievances = [
+    {
+      grievance_id: 'GRV-2026-00001',
+      farmer_name: 'Vikas Ganesh Shinde',
+      aadhaar_last4: '9901',
+      phone: '9876543210',
+      village: 'Haveli', taluka: 'Haveli', district: 'Pune',
+      complaint_text: 'कार्यालयातील अधिकाऱ्याने PM KISAN अर्ज करण्यासाठी ₹500 मागितले. हे पूर्णपणे अनैतिक आहे. (Officer demanded ₹500 bribe for PM KISAN application)',
+      category: 'officer_misconduct',
+      priority: 5,
+      priority_reason: 'Bribery allegation — requires immediate investigation',
+      status: 'escalated',
+      sla_days: 2,
+      sla_deadline: new Date(Date.now() - 2 * 86400000).toISOString(), // Overdue by 2 days
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00002',
+      farmer_name: 'Ramesh Baburao Patil',
+      aadhaar_last4: '4589',
+      phone: '9876543211',
+      village: 'Shirur', taluka: 'Shirur', district: 'Pune',
+      complaint_text: 'दुष्काळामुळे संपूर्ण सोयाबीन पीक नष्ट झाले. PMFBY विमा रक्कम ३ महिन्यांपासून प्रलंबित. कुटुंब उपासमारीच्या धोक्यात. (Entire soybean crop destroyed by drought. PMFBY insurance pending 3 months. Family facing starvation)',
+      category: 'crop_loss',
+      priority: 5,
+      priority_reason: 'Drought-induced crop loss with pending insurance — possible distress situation',
+      status: 'registered',
+      sla_days: 5,
+      sla_deadline: new Date(Date.now() + 3 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00003',
+      farmer_name: 'Anil Shankar More',
+      aadhaar_last4: '3344',
+      village: 'Khed', taluka: 'Khed', district: 'Pune',
+      complaint_text: 'PM-KISAN 2 installments not received since 6 months despite valid application',
+      category: 'subsidy_not_received',
+      priority: 4,
+      priority_reason: 'Financial hardship due to delayed subsidy payments',
+      status: 'in_progress',
+      sla_days: 7,
+      sla_deadline: new Date(Date.now() - 86400000).toISOString(), // Overdue
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00004',
+      farmer_name: 'Deepak Vishnu Pawar',
+      aadhaar_last4: '5566',
+      village: 'Baramati', taluka: 'Baramati', district: 'Pune',
+      complaint_text: 'विहिरीचे पाणी 2 महिन्यांपासून कमी आहे. शासनाने सिंचन पाइपलाइन मंजूर केली पण अजून काम सुरू नाही.',
+      category: 'water_supply',
+      priority: 3,
+      status: 'registered',
+      sla_days: 3,
+      sla_deadline: new Date(Date.now() + 2 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00005',
+      farmer_name: 'Sanjay Ramdas Kale',
+      aadhaar_last4: '7788',
+      village: 'Indapur', taluka: 'Indapur', district: 'Pune',
+      complaint_text: 'Purchased government subsidized seeds but germination rate was below 20%. Total waste of investment.',
+      category: 'seed_quality',
+      priority: 3,
+      status: 'in_progress',
+      sla_days: 5,
+      sla_deadline: new Date(Date.now() + 4 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00006',
+      farmer_name: 'Ganesh Pandurang Thorat',
+      aadhaar_last4: '2233',
+      village: 'Junnar', taluka: 'Junnar', district: 'Pune',
+      complaint_text: 'Scheme enrollment application submitted 45 days ago, no acknowledgement received.',
+      category: 'scheme_delay',
+      priority: 2,
+      status: 'resolved',
+      sla_days: 10,
+      sla_deadline: new Date(Date.now() - 5 * 86400000).toISOString(),
+      resolved_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00007',
+      farmer_name: 'Rajesh Namdev Bhosale',
+      aadhaar_last4: '4455',
+      village: 'Daund', taluka: 'Daund', district: 'Pune',
+      complaint_text: 'Per Drop More Crop subsidy approved 6 months ago but amount not credited to bank account.',
+      category: 'subsidy_not_received',
+      priority: 3,
+      status: 'registered',
+      sla_days: 7,
+      sla_deadline: new Date(Date.now() + 5 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00008',
+      farmer_name: 'Ashok Balasaheb Gaikwad',
+      aadhaar_last4: '6677',
+      village: 'Maval', taluka: 'Maval', district: 'Pune',
+      complaint_text: 'General query about how to apply for Kisan Credit Card.',
+      category: 'other',
+      priority: 1,
+      status: 'resolved',
+      sla_days: 7,
+      sla_deadline: new Date(Date.now() + 6 * 86400000).toISOString(),
+      resolved_at: new Date().toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00009',
+      farmer_name: 'Manoj Shivaji Mane',
+      aadhaar_last4: '8899',
+      village: 'Purandar', taluka: 'Purandar', district: 'Pune',
+      complaint_text: 'Insurance claim for hailstorm damage rejected without proper inspection. Total loss ₹2 lakh.',
+      category: 'crop_loss',
+      priority: 4,
+      status: 'registered',
+      sla_days: 5,
+      sla_deadline: new Date(Date.now() + 4 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+    {
+      grievance_id: 'GRV-2026-00010',
+      farmer_name: 'Santosh Madhav Sonawane',
+      aadhaar_last4: '1122',
+      village: 'Ambegaon', taluka: 'Ambegaon', district: 'Pune',
+      complaint_text: 'Soil Health Card application pending from last season. Need it for current season planning.',
+      category: 'scheme_delay',
+      priority: 2,
+      status: 'in_progress',
+      sla_days: 10,
+      sla_deadline: new Date(Date.now() + 7 * 86400000).toISOString(),
+      registered_by: clerkId || null,
+    },
+  ]
+
+  const { error } = await supabase.from('grievances').insert(grievances)
+  if (error) console.error('Grievance seed error:', error.message)
+  else console.log(`  Inserted ${grievances.length} grievances`)
+}
+
+async function seedDistress() {
+  console.log('Seeding distress scores...')
+
+  const distressScores = [
+    {
+      farmer_identifier: '4589',
+      farmer_name: 'Ramesh Baburao Patil',
+      taluka: 'Shirur',
+      district: 'Pune',
+      score: 145,
+      risk_level: 'CRITICAL',
+      signals: [
+        { type: 'sla_breach', description: '2 unresolved grievances past SLA deadline', weight: 50 },
+        { type: 'critical_grievance', description: '2 priority-5 grievances (crop loss + insurance)', weight: 80 },
+        { type: 'unclaimed_benefits', description: 'Eligible for 3 schemes but only 1 application', weight: 15 },
+      ],
+      officer_alerted: false,
+    },
+    {
+      farmer_identifier: '1244',
+      farmer_name: 'Suresh Dattatray Deshmukh',
+      taluka: 'Khed',
+      district: 'Pune',
+      score: 85,
+      risk_level: 'HIGH',
+      signals: [
+        { type: 'recent_rejections', description: '3 applications rejected in last 90 days', weight: 60 },
+        { type: 'sla_breach', description: '1 unresolved grievance past SLA', weight: 25 },
+      ],
+      officer_alerted: false,
+    },
+    {
+      farmer_identifier: '9901',
+      farmer_name: 'Vikas Ganesh Shinde',
+      taluka: 'Haveli',
+      district: 'Pune',
+      score: 75,
+      risk_level: 'HIGH',
+      signals: [
+        { type: 'stuck_insurance', description: '2 insurance claims stuck > 30 days', weight: 60 },
+        { type: 'unclaimed_benefits', description: 'Eligible for 4 schemes but 0 applications', weight: 15 },
+      ],
+      officer_alerted: false,
+    },
+  ]
+
+  const { error } = await supabase.from('distress_scores').insert(distressScores)
+  if (error) console.error('Distress seed error:', error.message)
+  else console.log(`  Inserted ${distressScores.length} distress scores`)
+}
+
+async function main() {
+  console.log('═══════════════════════════════════════')
+  console.log('  PRAGATI AI — Demo Data Seeding')
+  console.log('═══════════════════════════════════════\n')
+
+  const { clerkId, officerId } = await createDemoUsers()
+
+  // Small delay for trigger to create profiles
+  await new Promise(r => setTimeout(r, 1000))
+
+  await seedApplications(clerkId)
+  await seedGrievances(clerkId)
+  await seedDistress()
+
+  console.log('\n═══════════════════════════════════════')
+  console.log('  Seed complete! Demo credentials:')
+  console.log('  Clerk:   clerk@pragati.demo / clerk123')
+  console.log('  Officer: officer@pragati.demo / officer123')
+  console.log('═══════════════════════════════════════')
+}
+
+main().catch(console.error)
+
+
+--- FILE: D:\PRAGATI\types\index.ts ---
+export type UserRole = 'clerk' | 'officer'
+export type DocumentType = 'subsidy_application' | 'insurance_claim' | 'scheme_enrollment' | 'land_record' | 'grievance' | 'other'
+export type RiskScore = 'LOW' | 'MEDIUM' | 'HIGH'
+export type ApplicationStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'held'
+export type GrievanceCategory = 'water_supply' | 'seed_quality' | 'scheme_delay' | 'officer_misconduct' | 'subsidy_not_received' | 'crop_loss' | 'other'
+export type GrievanceStatus = 'registered' | 'in_progress' | 'resolved' | 'escalated'
+export type DistressLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+
+export interface Profile {
+  id: string
+  full_name: string
+  role: UserRole
+  district: string | null
+  taluka: string | null
+  office_name: string | null
+}
+
+export interface Application {
+  id: string
+  app_id: string
+  farmer_name: string
+  aadhaar_last4: string | null
+  village: string | null
+  taluka: string | null
+  district: string | null
+  document_type: DocumentType | null
+  scheme_name: string | null
+  claimed_amount: number | null
+  extracted_text: string | null
+  file_url: string | null
+  risk_score: RiskScore
+  irregularity_flags: IrregularityFlag[]
+  status: ApplicationStatus
+  department: string | null
+  assigned_officer_id: string | null
+  submitted_by: string | null
+  submitted_at: string
+  updated_at: string
+  pre_rejection_warnings: PreRejectionWarning[]
+}
+
+export interface IrregularityFlag {
+  type: string
+  detail: string
+  severity: 'low' | 'medium' | 'high'
+  matched_app_id?: string
+}
+
+export interface PreRejectionWarning {
+  field: string
+  issue: string
+  suggestedFix: string
+  severity: 'warning' | 'error'
+}
+
+export interface Grievance {
+  id: string
+  grievance_id: string
+  farmer_name: string
+  aadhaar_last4: string | null
+  village: string | null
+  taluka: string | null
+  district: string | null
+  complaint_text: string
+  category: GrievanceCategory | null
+  priority: number | null
+  priority_reason: string | null
+  status: GrievanceStatus
+  sla_days: number
+  sla_deadline: string | null
+  registered_by: string | null
+  registered_at: string
+  resolved_at: string | null
+}
+
+export interface Scheme {
+  id: string
+  name: string
+  nameMarathi: string
+  benefit: string
+  benefitAmount: string
+  eligibility: {
+    maxLandAcres?: number
+    minLandAcres?: number
+    states?: string[]
+    categories?: string[]
+    crops?: string[]
+    maxIncomeCategory?: string
+    irrigationTypes?: string[]
+    requiresKCC?: boolean
+    requiresSHC?: boolean
+    maxAge?: number
+    minAge?: number
+  }
+  requiredDocs: string[]
+  department: string
+}
+
+export interface DistressScore {
+  id: string
+  farmer_identifier: string
+  farmer_name: string | null
+  taluka: string | null
+  district: string | null
+  score: number
+  risk_level: DistressLevel
+  signals: DistressSignal[]
+  computed_at: string
+}
+
+export interface DistressSignal {
+  type: string
+  description: string
+  weight: number
+}
+
+// API Response types
+export interface ClassifyDocumentResponse {
+  documentType: DocumentType
+  schemeName: string | null
+  claimedAmount: number | null
+  cropType: string | null
+  farmerName: string | null
+  confidence: 'high' | 'medium' | 'low'
+  department: string
+}
+
+export interface EligibilityResponse {
+  matched: Array<{ schemeId: string; reason: string; confidence: 'high' | 'medium' }>
+}
+
+export interface GrievanceAnalysisResponse {
+  category: GrievanceCategory
+  priority: number
+  priorityReason: string
+  suggestedDepartment: string
+}
+
+export interface IrregularityResult {
+  riskScore: RiskScore
+  flags: IrregularityFlag[]
+}
+
+export interface NewApplication {
+  app_id: string
+  farmer_name: string
+  aadhaar_last4: string | null
+  village: string | null
+  taluka: string | null
+  district: string
+  document_type: DocumentType | null
+  scheme_name: string | null
+  claimed_amount: number | null
+  extracted_text: string | null
+  file_url: string | null
+  risk_score: RiskScore
+  irregularity_flags: IrregularityFlag[]
+  status: ApplicationStatus
+  department: string | null
+  submitted_by: string | null
+  pre_rejection_warnings: PreRejectionWarning[]
+}
+
+export interface AuditLogEntry {
+  id?: string
+  actor_id: string
+  action: string
+  target_type: 'application' | 'grievance' | 'eligibility_check'
+  target_id: string
+  details?: Record<string, any>
+  created_at?: string
+}
+
+export interface LegalAnalysisResponse {
+  documentType: string
+  parties: Array<{ role: string; name: string }>
+  propertyDetails: {
+    surveyNumber: string | null
+    area: string | null
+    location: string | null
+  }
+  keyAmount: number | null
+  clauses: Array<{
+    text: string
+    plain: string
+    risk: 'standard' | 'unusual' | 'harmful'
+    riskReason: string | null
+  }>
+  stampDutyCheck: 'sufficient' | 'insufficient' | 'unknown'
+  registrationRequired: boolean
+  overallRisk: 'low' | 'medium' | 'high'
+}
+
+export interface FarmerProfile {
+  name: string
+  age?: number
+  district: string
+  taluka?: string
+  landSize?: number // in acres
+  primaryCrop?: string
+  irrigationType?: string
+  category?: string // General, OBC, SC, ST
+  incomeCategory?: string
+  hasKCC?: boolean
+  hasSHC?: boolean
+}
+
+

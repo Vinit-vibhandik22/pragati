@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {"id": "handoff_doc", "label": "Project Handoff", "file_type": "docs", "source_file": "HANDOFF.md"},
+    {"id": "progress_doc", "label": "Progress Tracker", "file_type": "docs", "source_file": "PROGRESS.md"},
+    {"id": "readme_doc", "label": "README", "file_type": "docs", "source_file": "README.md"}
+  ],
+  "edges": [
+    {"source": "handoff_doc", "target": "clerk_dashboard", "relation": "specifies_ui", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "handoff_doc", "target": "officer_dashboard", "relation": "specifies_ui", "confidence": "EXTRACTED", "confidence_score": 1.0},
+    {"source": "progress_doc", "target": "backend_foundation", "relation": "tracks_completion", "confidence": "EXTRACTED", "confidence_score": 1.0}
+  ],
+  "hyperedges": [
+    {"id": "project_documentation", "label": "Project Documentation Set", "nodes": ["handoff_doc", "progress_doc", "readme_doc"], "relation": "group", "confidence": "INFERRED", "confidence_score": 1.0}
+  ],
+  "input_tokens": 3000,
+  "output_tokens": 500
+}
