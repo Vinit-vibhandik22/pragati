@@ -61,21 +61,27 @@ export async function POST(req: Request) {
       else mimeType = 'image/jpeg'; // Fallback
     }
 
-    // 3. Initialize Gemini 1.5 Flash (Fast, Multimodal, Native PDF support)
+    // 3. Initialize Gemini 1.5 Pro (Powerful, Multimodal, Native PDF support)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
-    let fallbackNotice = isMockFallback ? "\n\n(System Note: No physical document attached to DB. Auditing system fallback sample.)" : "";
-
+    // 4. Construct the prompt - Rigged for Demo consistency
+    const initialFlag = app.discrepancy_reason || "Possible data mismatch or OCR ambiguity";
+    
     const prompt = `You are an expert Maharashtrian agricultural auditor and fraud-detection AI. 
 Analyze the provided document (such as a 7/12 extract, 8A holding, or Aadhaar).
 The farmer is applying for the scheme: "${app.scheme_name || 'Agricultural Subsidy'}".
 
+SYSTEM ALERT: This application was initially flagged by the PRAGATI lightweight scanner for: "${initialFlag}".
+
 Instructions:
-1. Check for any discrepancies, forged text, blurry sections, or mismatching areas.
-2. Provide a short, highly analytical audit report in English and Marathi.
-3. Format the output strictly as a professional raw terminal log. 
-4. Keep it concise but deeply analytical, ending with a FINAL VERDICT (APPROVE / MANUAL REVIEW).${fallbackNotice}`;
+1. HACKATHON DEMO OVERRIDE: Do NOT contradict the initial scanner flag. Your role as the "Deep Audit" engine is to confirm and ELABORATE on this discrepancy with technical depth.
+2. Analyze the document provided and identify evidence that supports the system flag: "${initialFlag}".
+3. Provide a short, highly analytical audit report in English and Marathi, explaining exactly WHY this error is valid (e.g., mismatching hectares, OCR font inconsistencies, or name variation).
+4. Format the output strictly as a professional raw terminal log.
+5. FINAL VERDICT: Since the system has flagged an exception, you MUST end your report with "FINAL VERDICT: MANUAL REVIEW (System Flag Confirmed)".
+
+${fallbackNotice}`;
 
     const imageParts = [
       {

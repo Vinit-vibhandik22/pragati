@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 import { 
   AlertTriangle, 
   CheckCircle2, 
@@ -11,14 +12,16 @@ import {
   PhoneForwarded, 
   ShieldAlert, 
   ShieldCheck, 
-  ShieldCheck, 
   XCircle,
   FileText,
   ExternalLink,
   Bot,
   ClipboardCheck,
   Terminal,
-  Search
+  Search,
+  Loader2,
+  Microscope,
+  Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -43,6 +46,7 @@ export default function ClerkQueuePage() {
   const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
   const [auditResults, setAuditResults] = useState<Record<string, string>>({});
 
+  const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
@@ -152,11 +156,42 @@ export default function ClerkQueuePage() {
         className: "bg-red-50 border-red-200 text-red-900"
       });
 
-      // Optimistic UI update
+      // Force refresh server data and clear local state
+      router.refresh();
       setApplications(prev => prev.filter(a => a.id !== selectedApp.id));
       setShowOverrideModal(false);
     } catch (err: any) {
       toast.error("Override failed: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDirectApprove = async (app: Application) => {
+    const confirmApprove = window.confirm("Are you sure you want to approve this application without a justification note?");
+    if (!confirmApprove) return;
+
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('farmer_applications')
+        .update({ 
+          status: 'Verified_by_Clerk',
+          discrepancy_reason: 'DIRECT_APPROVAL: Verified by Clerk visually'
+        })
+        .eq('id', app.id);
+
+      if (error) throw error;
+
+      toast.success("Application Approved", {
+        description: `Status for ${app.farmer_id} updated to 'Verified_by_Clerk'.`,
+        icon: <CheckCircle2 className="text-emerald-500" />
+      });
+
+      router.refresh();
+      setApplications(prev => prev.filter(a => a.id !== app.id));
+    } catch (err: any) {
+      toast.error("Approval failed: " + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -269,11 +304,18 @@ export default function ClerkQueuePage() {
                         Request Physical Doc
                       </button>
                       <button 
+                        onClick={() => handleDirectApprove(app)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-emerald-600 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 rounded-lg transition-all"
+                      >
+                        <Check size={14} />
+                        Approve
+                      </button>
+                      <button 
                         onClick={() => openOverrideModal(app)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-lg transition-all"
                       >
                         <ShieldCheck size={14} />
-                        Override & Approve
+                        Override
                       </button>
                     </div>
                   </td>
