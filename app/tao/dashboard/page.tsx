@@ -1,5 +1,8 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
@@ -17,7 +20,9 @@ import {
   GanttChartSquare,
   Lock,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  RefreshCcw,
+  Inbox
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,18 +52,19 @@ export default function TAODashboard() {
   async function fetchQueues() {
     setLoading(true);
     try {
-      // Fetch Clean Queue (Verified by AI)
+      // Fetch Clean Queue (Verified by AI - Standard path)
       const { data: clean, error: cleanError } = await supabase
         .from('farmer_applications')
         .select('*')
-        .eq('status', 'Verified_by_AI');
+        .eq('status', 'Verified_by_AI')
+        .order('created_at', { ascending: false });
 
-      // Fetch Risk Queue (Verified by Clerk + Overridden)
+      // Fetch Risk Queue (All Clerk actions: Overridden OR Direct Approvals)
       const { data: risk, error: riskError } = await supabase
         .from('farmer_applications')
         .select('*')
         .eq('status', 'Verified_by_Clerk')
-        .eq('is_manually_overridden', true);
+        .order('created_at', { ascending: false });
 
       if (cleanError) throw cleanError;
       if (riskError) throw riskError;
@@ -194,7 +200,13 @@ export default function TAODashboard() {
 
           <div className="space-y-4">
             {cleanQueue.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 italic text-sm">No clean applications currently in queue.</div>
+              <div className="bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-3xl p-10 flex flex-col items-center text-center animate-in fade-in duration-500">
+                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-slate-300 mb-4 shadow-sm">
+                  <Inbox size={24} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-600">No Clean Approvals</h4>
+                <p className="text-xs text-slate-400 mt-1 max-w-[200px]">AI has not yet auto-verified any new applications for this taluka.</p>
+              </div>
             ) : (
               cleanQueue.map(app => (
                 <div key={app.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex items-center justify-between group">
@@ -237,7 +249,13 @@ export default function TAODashboard() {
 
           <div className="space-y-4">
             {riskQueue.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 italic text-sm">No high-risk exceptions found. Taluka is secure.</div>
+              <div className="bg-red-50/30 border-2 border-dashed border-red-100 rounded-3xl p-10 flex flex-col items-center text-center animate-in fade-in duration-500">
+                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-red-200 mb-4 shadow-sm">
+                  <ShieldCheck size={24} />
+                </div>
+                <h4 className="text-sm font-bold text-red-900/60">No Risk Exceptions</h4>
+                <p className="text-xs text-red-400 mt-1 max-w-[200px]">Clerks have not pushed any manual overrides for your review today.</p>
+              </div>
             ) : (
               riskQueue.map(app => (
                 <div key={app.id} className="bg-white border-2 border-red-100 rounded-2xl p-0 overflow-hidden shadow-lg shadow-red-600/5 hover:border-red-300 transition-all">
