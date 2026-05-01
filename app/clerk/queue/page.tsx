@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { updateApplicationStatus } from '@/app/actions/clerk-actions';
 import { 
   AlertTriangle, 
   CheckCircle2, 
@@ -140,26 +141,23 @@ export default function ClerkQueuePage() {
 
     setIsProcessing(true);
     try {
-      const { error } = await supabase
-        .from('farmer_applications')
-        .update({ 
-          status: 'Verified_by_Clerk', 
-          is_manually_overridden: true,
-          discrepancy_reason: `OVERRIDDEN: ${overrideJustification}`
-        })
-        .eq('id', selectedApp.id);
+      const result = await updateApplicationStatus(
+        selectedApp.id, 
+        'Verified_by_Clerk', 
+        `OVERRIDDEN: ${overrideJustification}`
+      );
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error);
 
       toast.success("AI Flag Overridden", {
         description: `Application ${selectedApp.id} approved. Taluka Officer (TAO) has been alerted of this manual override.`,
         className: "bg-red-50 border-red-200 text-red-900"
       });
 
-      // Force refresh server data and clear local state
-      router.refresh();
+      // Update local state to remove item from queue
       setApplications(prev => prev.filter(a => a.id !== selectedApp.id));
       setShowOverrideModal(false);
+      router.refresh();
     } catch (err: any) {
       toast.error("Override failed: " + err.message);
     } finally {
@@ -173,23 +171,21 @@ export default function ClerkQueuePage() {
 
     setIsProcessing(true);
     try {
-      const { error } = await supabase
-        .from('farmer_applications')
-        .update({ 
-          status: 'Verified_by_Clerk',
-          discrepancy_reason: 'DIRECT_APPROVAL: Verified by Clerk visually'
-        })
-        .eq('id', app.id);
+      const result = await updateApplicationStatus(
+        app.id, 
+        'Verified_by_Clerk', 
+        'DIRECT_APPROVAL: Verified by Clerk visually'
+      );
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error);
 
       toast.success("Application Approved", {
         description: `Status for ${app.farmer_id} updated to 'Verified_by_Clerk'.`,
         icon: <CheckCircle2 className="text-emerald-500" />
       });
 
-      router.refresh();
       setApplications(prev => prev.filter(a => a.id !== app.id));
+      router.refresh();
     } catch (err: any) {
       toast.error("Approval failed: " + err.message);
     } finally {

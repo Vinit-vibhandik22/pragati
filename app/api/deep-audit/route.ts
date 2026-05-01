@@ -67,19 +67,25 @@ export async function POST(req: Request) {
 
     // 4. Construct the prompt - Rigged for Demo consistency
     const initialFlag = app.discrepancy_reason || "Possible data mismatch or OCR ambiguity";
+    const claimedArea = app.land_area || app.land_size_ha || null;
+    const fallbackNotice = isMockFallback ? "\n\n(System Note: No physical document attached to DB. Auditing system fallback sample.)" : "";
     
     const prompt = `You are an expert Maharashtrian agricultural auditor and fraud-detection AI. 
 Analyze the provided document (such as a 7/12 extract, 8A holding, or Aadhaar).
 The farmer is applying for the scheme: "${app.scheme_name || 'Agricultural Subsidy'}".
 
+Farmer's Claimed Data:
+- Claimed Land Area: ${claimedArea ? `${claimedArea} Hectares` : 'MISSING / NULL'}
+
 SYSTEM ALERT: This application was initially flagged by the PRAGATI lightweight scanner for: "${initialFlag}".
 
 Instructions:
-1. HACKATHON DEMO OVERRIDE: Do NOT contradict the initial scanner flag. Your role as the "Deep Audit" engine is to confirm and ELABORATE on this discrepancy with technical depth.
-2. Analyze the document provided and identify evidence that supports the system flag: "${initialFlag}".
-3. Provide a short, highly analytical audit report in English and Marathi, explaining exactly WHY this error is valid (e.g., mismatching hectares, OCR font inconsistencies, or name variation).
-4. Format the output strictly as a professional raw terminal log.
-5. FINAL VERDICT: Since the system has flagged an exception, you MUST end your report with "FINAL VERDICT: MANUAL REVIEW (System Flag Confirmed)".
+1. HACKATHON DEMO OVERRIDE: Your job is ONLY to elaborate technically on the existing system flag: "${initialFlag}". Do NOT contradict it. 
+2. Analyze the document provided and identify evidence that supports the system flag.
+3. INCOMPLETE FORM FALLBACK: If the farmer's claimed area is MISSING or NULL, explicitly point out that "The application form is incomplete as the claimed land area is missing," rather than solely blaming the document for a mismatch.
+4. Provide a short, highly analytical audit report in English and Marathi, explaining exactly WHY this error is valid.
+5. Format the output strictly as a professional raw terminal log.
+6. FINAL VERDICT: You MUST end your report with "FINAL VERDICT: MANUAL REVIEW (System Flag Confirmed)".
 
 ${fallbackNotice}`;
 
