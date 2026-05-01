@@ -11,12 +11,14 @@ import {
   PhoneForwarded, 
   ShieldAlert, 
   ShieldCheck, 
+  ShieldCheck, 
   XCircle,
   FileText,
   ExternalLink,
   Bot,
-  Microscope,
-  Terminal
+  ClipboardCheck,
+  Terminal,
+  Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -254,10 +256,10 @@ export default function ClerkQueuePage() {
                       <button 
                         onClick={() => handleDeepAudit(app.id)}
                         disabled={auditingAppId === app.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-emerald-600 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 rounded-lg transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600 rounded-lg transition-all"
                       >
-                        {auditingAppId === app.id ? <Loader2 size={14} className="animate-spin" /> : <Microscope size={14} />}
-                        {auditingAppId === app.id ? "Initializing Gemini Vision..." : "🔬 Deep AI Audit (Live)"}
+                        {auditingAppId === app.id ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
+                        {auditingAppId === app.id ? "Analyzing Document..." : "Verify with AI Audit"}
                       </button>
                       <button 
                         onClick={() => handleRequestSMS(app)}
@@ -278,12 +280,12 @@ export default function ClerkQueuePage() {
                 </tr>
                 {(auditResults[app.id] || auditingAppId === app.id) && (
                   <tr>
-                    <td colSpan={3} className="px-6 pb-6 pt-0 bg-white border-b-0">
-                      <div className="bg-slate-900 rounded-xl p-5 border border-slate-700 shadow-[0_0_15px_rgba(16,185,129,0.15)] overflow-hidden font-mono text-xs text-emerald-400 relative animate-in fade-in slide-in-from-top-4">
-                         <div className="flex justify-between items-center mb-4 border-b border-slate-700/50 pb-3">
-                            <div className="flex items-center gap-2 text-emerald-500/70">
-                               <Terminal size={14} />
-                               <span className="tracking-widest opacity-80">PRAGATI_VISION_NODE // AUDIT_SEQ_{app.id.substring(0,8).toUpperCase()}</span>
+                    <td colSpan={3} className="px-6 pb-6 pt-0 bg-white">
+                      <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2">
+                         <div className="flex justify-between items-center mb-4 border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2 text-slate-700">
+                               <ClipboardCheck size={16} className="text-indigo-600" />
+                               <span className="font-bold text-xs uppercase tracking-tight">AI Audit Verification Report</span>
                             </div>
                             {auditResults[app.id] && (
                                <button 
@@ -292,24 +294,28 @@ export default function ClerkQueuePage() {
                                    delete newRes[app.id];
                                    return newRes;
                                  })}
-                                 className="text-slate-500 hover:text-white flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-md transition-colors"
+                                 className="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-[11px] font-medium transition-colors"
                                >
-                                 <XCircle size={12} /> Close Terminal
+                                 <XCircle size={14} /> Close Report
                                </button>
                             )}
                          </div>
                          {auditingAppId === app.id ? (
-                            <div className="flex flex-col gap-3 animate-pulse text-emerald-500/60 font-semibold tracking-wider">
-                              <p>{">"} INITIALIZING MULTIMODAL ANALYSIS...</p>
-                              <p>{">"} FETCHING STORAGE BUCKET DOCUMENT...</p>
-                              <p>{">"} AWAITING GOOGLE GEMINI VISION RESPONSE...</p>
-                              <div className="h-2 w-2 bg-emerald-500 rounded-full animate-ping mt-2"></div>
+                            <div className="flex items-center gap-3 py-4 text-slate-500">
+                              <Loader2 size={18} className="animate-spin text-indigo-500" />
+                              <p className="text-xs font-medium italic">PRAGATI AI is currently cross-referencing document data with scheme criteria...</p>
                             </div>
                          ) : (
-                            <div className="whitespace-pre-wrap leading-relaxed text-[13px]">
-                              {auditResults[app.id]}
+                            <div className="text-slate-700 text-sm leading-relaxed font-sans bg-white border border-slate-100 p-4 rounded-lg shadow-inner">
+                              <div className="whitespace-pre-wrap">
+                                {auditResults[app.id]}
+                              </div>
                             </div>
                          )}
+                         <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-400">
+                            <Search size={12} />
+                            <span>Verified by Google Gemini 1.5 Pro | Automated Administrative Audit</span>
+                         </div>
                       </div>
                     </td>
                   </tr>
