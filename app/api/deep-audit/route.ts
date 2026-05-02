@@ -82,9 +82,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Initialize Gemini 3.1 Flash (Optimized for fast OCR and document processing)
+    // 3. Initialize Gemini 2.5 Flash (Latest stable model supporting generateContent on v1beta)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     // 4. Construct the prompt - Rigged for Demo consistency
     const initialFlag = app.discrepancy_reason || "Possible data mismatch or OCR ambiguity";
