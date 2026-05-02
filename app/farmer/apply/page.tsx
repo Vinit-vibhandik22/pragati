@@ -103,7 +103,9 @@ export default function FarmerPortal() {
             </div>
 
             <button
-              onClick={() => {
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
                 setIsSuccessAcknowledged(true);
                 setUploadedFiles([]);
                 setFormIteration(prev => prev + 1);
