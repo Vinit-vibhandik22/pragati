@@ -69,9 +69,9 @@ export async function POST(req: Request) {
       mimeType = 'image/webp';
     }
 
-    // 3. Initialize Gemini 1.5 Pro (Powerful, Multimodal, Native PDF support)
+    // 3. Initialize Gemini 1.5 Flash (Optimized for fast OCR and document processing)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // 4. Construct the prompt - Rigged for Demo consistency
     const initialFlag = app.discrepancy_reason || "Possible data mismatch or OCR ambiguity";
