@@ -39,7 +39,11 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login'
+    if (request.nextUrl.pathname.startsWith('/farmer')) {
+      url.pathname = '/login/farmer'
+    } else {
+      url.pathname = '/login/official'
+    }
     return NextResponse.redirect(url)
   }
 

@@ -46,7 +46,14 @@ export async function login(prevState: any, formData: FormData) {
     .single()
 
   const role = profile?.role || 'clerk'
-  redirect(role === 'officer' ? '/tao/dashboard' : '/clerk/queue')
+  
+  if (role === 'farmer') {
+    redirect('/farmer/apply')
+  } else if (role === 'officer') {
+    redirect('/tao/dashboard')
+  } else {
+    redirect('/clerk/queue')
+  }
 }
 
 export async function signup(prevState: any, formData: FormData) {
@@ -61,7 +68,7 @@ export async function signup(prevState: any, formData: FormData) {
     return { error: 'All fields are required' }
   }
 
-  if (!['clerk', 'officer'].includes(role)) {
+  if (!['clerk', 'officer', 'farmer'].includes(role)) {
     return { error: 'Invalid role' }
   }
 
@@ -80,7 +87,13 @@ export async function signup(prevState: any, formData: FormData) {
     return { error: error.message }
   }
 
-  redirect(role === 'officer' ? '/officer' : '/clerk')
+  if (role === 'farmer') {
+    redirect('/farmer/apply')
+  } else if (role === 'officer') {
+    redirect('/officer')
+  } else {
+    redirect('/clerk/queue')
+  }
 }
 
 export async function signout() {
