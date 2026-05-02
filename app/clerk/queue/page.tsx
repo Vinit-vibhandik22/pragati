@@ -49,6 +49,7 @@ export default function ClerkQueuePage() {
   const [isAiBatchProcessing, setIsAiBatchProcessing] = useState(false);
   const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
   const [auditResults, setAuditResults] = useState<Record<string, any>>({});
+  const [selectedDocInfo, setSelectedDocInfo] = useState<any>(null);
   
   // Human-in-the-Loop Batch UI state
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -433,55 +434,57 @@ export default function ClerkQueuePage() {
                               
                               <div className="p-2 space-y-1">
                                 {auditResults[app.id].document_evaluations?.map((doc: any, idx: number) => (
-                                  <div key={idx} className="group flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition-colors border border-transparent hover:border-slate-100">
-                                    <div className="flex items-center gap-3">
+                                  <div key={idx} className="group flex items-center justify-between p-3 hover:bg-slate-50/80 rounded-xl transition-all border border-transparent hover:border-slate-200/60 bg-white/50 mb-1 last:mb-0">
+                                    <div className="flex items-center gap-4">
                                       {doc.status === 'Safe' ? (
-                                        <div className="bg-emerald-100 text-emerald-600 p-1 rounded-full">
-                                          <Check size={12} strokeWidth={3} />
+                                        <div className="bg-emerald-100/80 text-emerald-600 p-2 rounded-lg shadow-sm">
+                                          <Check size={14} strokeWidth={3} />
                                         </div>
                                       ) : (
-                                        <div className="bg-red-100 text-red-600 p-1 rounded-full">
-                                          <X size={12} strokeWidth={3} />
+                                        <div className="bg-red-100/80 text-red-600 p-2 rounded-lg shadow-sm">
+                                          <X size={14} strokeWidth={3} />
                                         </div>
                                       )}
                                       <div>
-                                        <p className="text-xs font-bold text-slate-700">{doc.document_name}</p>
-                                        <p className="text-[10px] text-slate-400 font-medium">Status: {doc.status}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-xs font-bold text-slate-800">{doc.document_name}</p>
+                                          <a 
+                                            href={app.document_urls && app.document_urls[idx] ? app.document_urls[idx] : "#"} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                            title="View Original Document"
+                                            onClick={(e) => {
+                                              if (!app.document_urls || !app.document_urls[idx]) {
+                                                e.preventDefault();
+                                                toast.info("This is a demo record. No physical document available for viewing.");
+                                              }
+                                            }}
+                                          >
+                                            <Eye size={13} />
+                                          </a>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-tighter">Status: {doc.status}</p>
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
-                                      {app.document_urls && app.document_urls[idx] && (
-                                        <a 
-                                          href={app.document_urls[idx]} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-all"
-                                          title="View Document"
-                                        >
-                                          <Eye size={14} />
-                                        </a>
-                                      )}
-                                      
+                                    <div className="flex items-center gap-1.5">
                                       <div className="relative group/info">
-                                        <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-all">
-                                          <Info size={14} />
+                                        <button 
+                                          onClick={() => setSelectedDocInfo({ ...doc, appId: app.id })}
+                                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                        >
+                                          <Info size={16} />
                                         </button>
                                         
-                                        <div className="absolute right-0 bottom-full mb-2 w-64 bg-slate-900 text-white p-3 rounded-xl shadow-xl opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all z-50 pointer-events-none">
-                                          <div className="space-y-2">
-                                            <div>
-                                              <p className="text-[9px] uppercase font-bold text-slate-400 tracking-widest mb-1">AI Explanation</p>
-                                              <p className="text-[11px] leading-relaxed text-slate-200">{doc.clerk_explanation}</p>
-                                            </div>
-                                            {doc.cross_document_impact && (
-                                              <div className="pt-2 border-t border-white/10">
-                                                <p className="text-[9px] uppercase font-bold text-indigo-400 tracking-widest mb-1">Cross-Document Impact</p>
-                                                <p className="text-[11px] leading-relaxed text-slate-200 italic">{doc.cross_document_impact}</p>
-                                              </div>
-                                            )}
-                                          </div>
-                                          <div className="absolute -bottom-1 right-3 w-2 h-2 bg-slate-900 rotate-45"></div>
+                                        {/* Hover Tooltip (Short Summary) */}
+                                        <div className="absolute right-0 bottom-full mb-2 w-56 bg-slate-900 text-white p-3 rounded-xl shadow-2xl opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all z-[60] pointer-events-none transform translate-y-1 group-hover/info:translate-y-0">
+                                          <p className="text-[10px] leading-relaxed text-slate-300">
+                                            <span className="font-bold text-white block mb-1">Quick Summary</span>
+                                            {doc.clerk_explanation.length > 80 ? doc.clerk_explanation.substring(0, 80) + "..." : doc.clerk_explanation}
+                                          </p>
+                                          <p className="text-[9px] text-indigo-400 mt-2 font-bold animate-pulse">Click for full report →</p>
+                                          <div className="absolute -bottom-1 right-4 w-2 h-2 bg-slate-900 rotate-45"></div>
                                         </div>
                                       </div>
                                     </div>
@@ -712,6 +715,67 @@ export default function ClerkQueuePage() {
                 >
                   {isBulkExecuting ? <Loader2 size={16} className="animate-spin" /> : <ClipboardCheck size={16} />}
                   Confirm & Execute Routing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Audit Detail Modal */}
+      {selectedDocInfo && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white/20">
+            <div className="bg-indigo-600 p-6 text-white relative">
+              <button 
+                onClick={() => setSelectedDocInfo(null)}
+                className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-2xl ${selectedDocInfo.status === 'Safe' ? 'bg-emerald-500' : 'bg-red-500'} shadow-lg`}>
+                  <ShieldAlert size={24} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold opacity-80 uppercase tracking-widest">Document Audit Verdict</p>
+                  <h3 className="text-2xl font-black">{selectedDocInfo.document_name}</h3>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-indigo-600">
+                  <Terminal size={18} />
+                  <h4 className="font-bold text-sm uppercase tracking-wider">Technical AI Verdict</h4>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-inner">
+                  <p className="text-slate-700 leading-relaxed font-medium">
+                    {selectedDocInfo.clerk_explanation}
+                  </p>
+                </div>
+              </div>
+
+              {selectedDocInfo.cross_document_impact && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-red-600">
+                    <ShieldAlert size={18} />
+                    <h4 className="font-bold text-sm uppercase tracking-wider">Cross-Document Impact</h4>
+                  </div>
+                  <div className="bg-red-50 p-6 rounded-2xl border border-red-100 shadow-sm">
+                    <p className="text-red-900 leading-relaxed italic font-medium">
+                      {selectedDocInfo.cross_document_impact}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-4 pt-4">
+                <button 
+                  onClick={() => setSelectedDocInfo(null)}
+                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 active:scale-95"
+                >
+                  Confirm & Close
                 </button>
               </div>
             </div>
