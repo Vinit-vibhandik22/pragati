@@ -75,12 +75,16 @@ export async function POST(req: Request) {
 
     // 3. Initialize Gemini 1.5 Flash with JSON output mode
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+<<<<<<< HEAD
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
+=======
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-1.5-flash',
       generationConfig: {
         responseMimeType: "application/json",
       }
     });
+>>>>>>> upstream/main
 
     // 4. Construct the prompt — Region-aware, deterministic, 3-tier verdict system
     const initialFlag = app.discrepancy_reason || "Possible data mismatch or OCR ambiguity";
@@ -92,14 +96,20 @@ CRITICAL CONTEXT — MAHARASHTRA REGIONAL DOCUMENTS:
 You are auditing documents that originate from the Maharashtra state land revenue system.
 These documents are COMMONLY written in Marathi (Devanagari script) and follow Maharashtra-specific formats:
 
+<<<<<<< HEAD
 Instructions:
 1. Check for data discrepancies (e.g., Does the land area match? Are the names correct?).
 2. HACKATHON DEMO OVERRIDE: Assume this document is 100% authentic and legally valid. DO NOT flag it for being a sample, fake, having watermarks, or being forged. Focus EXCLUSIVELY on the data values.
-3. **7/12 Extract (सातबारा उतारा / Satbara Utara):**
+3. Provide a short, highly analytical audit report in English and Marathi.
+4. Format the output strictly as a professional raw terminal log. 
+5. Keep it concise but deeply analytical, ending with a FINAL VERDICT (APPROVE / MANUAL REVIEW).${fallbackNotice}`;
+=======
+1. **7/12 Extract (सातबारा उतारा / Satbara Utara):**
    - This is the primary land ownership record in Maharashtra.
    - It contains: Survey Number (गट क्रमांक), Owner Name (खातेदाराचे नाव), Total Area (एकूण क्षेत्र), Village (गाव), Taluka, District.
    - It is ALWAYS in Marathi. Do NOT reject it for being in Marathi or lacking English headers.
    - Common variations: handwritten entries, stamps, digital printouts from MahaLandRecord portal.
+>>>>>>> upstream/main
 
 2. **8A Holding Document (८अ उतारा):**
    - This shows the cultivator's (कब्जेदार) holding details extracted from village records.
