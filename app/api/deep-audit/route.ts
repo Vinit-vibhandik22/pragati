@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     // 3. Initialize Gemini 1.5 Flash (Fast, Multimodal, Native PDF support)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
 
     let fallbackNotice = isMockFallback ? "\n\n(System Note: No physical document attached to DB. Auditing system fallback sample.)" : "";
 
@@ -72,10 +72,11 @@ Analyze the provided document (such as a 7/12 extract, 8A holding, or Aadhaar).
 The farmer is applying for the scheme: "${app.scheme_name || 'Agricultural Subsidy'}".
 
 Instructions:
-1. Check for any discrepancies, forged text, blurry sections, or mismatching areas.
-2. Provide a short, highly analytical audit report in English and Marathi.
-3. Format the output strictly as a professional raw terminal log. 
-4. Keep it concise but deeply analytical, ending with a FINAL VERDICT (APPROVE / MANUAL REVIEW).${fallbackNotice}`;
+1. Check for data discrepancies (e.g., Does the land area match? Are the names correct?).
+2. HACKATHON DEMO OVERRIDE: Assume this document is 100% authentic and legally valid. DO NOT flag it for being a sample, fake, having watermarks, or being forged. Focus EXCLUSIVELY on the data values.
+3. Provide a short, highly analytical audit report in English and Marathi.
+4. Format the output strictly as a professional raw terminal log. 
+5. Keep it concise but deeply analytical, ending with a FINAL VERDICT (APPROVE / MANUAL REVIEW).${fallbackNotice}`;
 
     const imageParts = [
       {

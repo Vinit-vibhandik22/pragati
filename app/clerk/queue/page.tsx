@@ -11,14 +11,15 @@ import {
   PhoneForwarded, 
   ShieldAlert, 
   ShieldCheck, 
-  ShieldCheck, 
   XCircle,
   FileText,
   ExternalLink,
   Bot,
   ClipboardCheck,
   Terminal,
-  Search
+  Search,
+  Microscope,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
