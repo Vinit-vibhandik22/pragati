@@ -92,19 +92,41 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
             )}
 
             {isSignUp && (
-              <div className="animate-in slide-in-from-top-2 fade-in duration-200">
-                <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="fullName">
-                  Full Name
-                </label>
-                <input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  required
-                  className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
-                  style={{ '--tw-ring-color': themeColor } as any}
-                  placeholder="e.g. Tukaram Patil"
-                />
+              <div className="animate-in slide-in-from-top-2 fade-in duration-200 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="fullName">
+                    Full Name
+                  </label>
+                  <input
+                    id="fullName"
+                    name="fullName"
+                    type="text"
+                    required
+                    className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
+                    style={{ '--tw-ring-color': themeColor } as any}
+                    placeholder="e.g. Tukaram Patil"
+                  />
+                </div>
+
+                {!isFarmer && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="role">
+                      Official Role
+                    </label>
+                    <select
+                      id="role"
+                      name="role"
+                      required
+                      className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium appearance-none"
+                      style={{ '--tw-ring-color': themeColor } as any}
+                    >
+                      <option value="krushi_sahayak">Krushi Sahayak</option>
+                      <option value="talathi">Talathi</option>
+                      <option value="gram_sevak">Gram Sevak</option>
+                      <option value="tao">Taluka Agriculture Officer (TAO)</option>
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
@@ -163,18 +185,16 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
           </form>
 
           <div className="mt-8 pt-6 border-t border-[#f2f4f3] text-center space-y-4">
-            {isFarmer && (
-              <button 
-                onClick={() => {
-                  setIsSignUp(!isSignUp)
-                  setClientError(null)
-                }}
-                className="text-sm font-semibold hover:underline block w-full transition-colors"
-                style={{ color: themeColor }}
-              >
-                {isSignUp ? "Already have an account? Login" : "New Farmer? Create Account"}
-              </button>
-            )}
+            <button 
+              onClick={() => {
+                setIsSignUp(!isSignUp)
+                setClientError(null)
+              }}
+              className="text-sm font-semibold hover:underline block w-full transition-colors"
+              style={{ color: themeColor }}
+            >
+              {isSignUp ? "Already have an account? Login" : (isFarmer ? "New Farmer? Create Account" : "Register Official Account")}
+            </button>
 
             {!isSignUp && (
               <div className="space-y-2">

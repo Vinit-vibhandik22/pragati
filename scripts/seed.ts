@@ -123,7 +123,7 @@ async function seed() {
     { name: "Maruti Gite", dist: "Parbhani", taluka: "Pathri", village: "Manwath", crop: "Soybean", size: 4.2, survey: "112/B" },
   ];
 
-  const insertedFarmers = [];
+  const insertedFarmers: any[] = [];
   for (let i = 0; i < farmersData.length; i++) {
     const f = farmersData[i];
     const dummyAadhaar = `1234567890${i.toString().padStart(2, '0')}`;

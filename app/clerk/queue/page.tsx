@@ -20,17 +20,12 @@ import {
   ClipboardCheck,
   Terminal,
   Search,
-<<<<<<< HEAD
-  Microscope,
-  Loader2
-=======
   Loader2,
   Microscope,
   Check,
   Clock,
   Pause,
   X
->>>>>>> upstream/main
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/context/LanguageContext';

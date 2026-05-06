@@ -51,24 +51,31 @@ export async function login(prevState: any, formData: FormData) {
   }
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('user_profiles')
     .select('role')
     .eq('id', user.id)
     .single()
 
-  const role = profile?.role || 'clerk'
+  const role = profile?.role || 'krushi_sahayak'
   
   if (role === 'farmer') {
-    redirect('/farmer/apply')
-  } else if (role === 'officer') {
+    redirect('/farmer/dashboard/profile')
+  } else if (role === 'krushi_sahayak') {
+    redirect('/ks/dashboard')
+  } else if (role === 'talathi') {
+    redirect('/talathi/dashboard')
+  } else if (role === 'gram_sevak') {
+    redirect('/gs/dashboard')
+  } else if (role === 'tao') {
     redirect('/tao/dashboard')
   } else {
-    redirect('/clerk/queue')
+    redirect('/')
   }
 }
 
 export async function signup(prevState: any, formData: FormData) {
   const supabase = await createClient()
+  const cookieStore = await cookies()
 
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -79,7 +86,8 @@ export async function signup(prevState: any, formData: FormData) {
     return { error: 'All fields are required' }
   }
 
-  if (!['clerk', 'officer', 'farmer'].includes(role)) {
+  const validRoles = ['farmer', 'krushi_sahayak', 'talathi', 'gram_sevak', 'tao'];
+  if (!validRoles.includes(role)) {
     return { error: 'Invalid role' }
   }
 
@@ -106,11 +114,17 @@ export async function signup(prevState: any, formData: FormData) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     })
-    redirect('/farmer/apply')
-  } else if (role === 'officer') {
-    redirect('/officer')
+    redirect('/farmer/dashboard/profile')
+  } else if (role === 'krushi_sahayak') {
+    redirect('/ks/dashboard')
+  } else if (role === 'talathi') {
+    redirect('/talathi/dashboard')
+  } else if (role === 'gram_sevak') {
+    redirect('/gs/dashboard')
+  } else if (role === 'tao') {
+    redirect('/tao/dashboard')
   } else {
-    redirect('/clerk/queue')
+    redirect('/')
   }
 }
 

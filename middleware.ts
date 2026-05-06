@@ -38,6 +38,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const isDemoSession = request.cookies.get('pragati_demo_session')?.value === 'true'
 
+  // Protected paths logic
   if (!user && !isDemoSession) {
     const url = request.nextUrl.clone()
     if (request.nextUrl.pathname.startsWith('/farmer')) {
@@ -46,6 +47,35 @@ export async function middleware(request: NextRequest) {
       url.pathname = '/login/official'
     }
     return NextResponse.redirect(url)
+  }
+
+  // If we have a user, ensure they are in the right portal
+  if (user && !request.nextUrl.pathname.startsWith('/api')) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const role = profile?.role
+    const path = request.nextUrl.pathname
+
+    // Role-based path guarding
+    if (role === 'farmer' && !path.startsWith('/farmer')) {
+      return NextResponse.redirect(new URL('/farmer/dashboard/profile', request.url))
+    }
+    if (role === 'krushi_sahayak' && !path.startsWith('/ks')) {
+      return NextResponse.redirect(new URL('/ks/dashboard', request.url))
+    }
+    if (role === 'talathi' && !path.startsWith('/talathi')) {
+      return NextResponse.redirect(new URL('/talathi/dashboard', request.url))
+    }
+    if (role === 'gram_sevak' && !path.startsWith('/gs')) {
+      return NextResponse.redirect(new URL('/gs/dashboard', request.url))
+    }
+    if (role === 'tao' && !path.startsWith('/tao')) {
+      return NextResponse.redirect(new URL('/tao/dashboard', request.url))
+    }
   }
 
   return supabaseResponse

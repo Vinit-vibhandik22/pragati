@@ -256,7 +256,7 @@ export default function SchemeApplicationPage() {
             file={files[doc] || null}
             status={uploadStatus[doc] || "idle"}
             errorMessage={errorMessages[doc]}
-            onFileSelect={(file) => setFiles(prev => ({ ...prev, [doc]: file }))}
+            onFileSelect={(file: File) => setFiles(prev => ({ ...prev, [doc]: file }))}
             onFileRemove={() => {
               setFiles(prev => ({ ...prev, [doc]: null }));
               setUploadStatus(prev => ({ ...prev, [doc]: "idle" }));
@@ -295,7 +295,27 @@ export default function SchemeApplicationPage() {
   );
 }
 
-function DocumentUploadCard({ docName, lang, file, status, errorMessage, onFileSelect, onFileRemove, onSubmit }: any) {
+interface DocumentUploadCardProps {
+  docName: string;
+  lang: "EN" | "MR";
+  file: File | null;
+  status: "idle" | "uploading" | "success" | "error";
+  errorMessage?: string;
+  onFileSelect: (file: File) => void;
+  onFileRemove: () => void;
+  onSubmit: () => void;
+}
+
+function DocumentUploadCard({ 
+  docName, 
+  lang, 
+  file, 
+  status, 
+  errorMessage, 
+  onFileSelect, 
+  onFileRemove, 
+  onSubmit 
+}: DocumentUploadCardProps) {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       onFileSelect(acceptedFiles[0]);

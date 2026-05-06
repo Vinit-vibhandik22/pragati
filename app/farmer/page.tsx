@@ -308,7 +308,13 @@ export default function FarmerPortal() {
   );
 }
 
-function SidebarLink({ icon, label, active = false }) {
+interface SidebarLinkProps {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+}
+
+function SidebarLink({ icon, label, active = false }: SidebarLinkProps) {
   return (
     <a 
       href="#" 
@@ -323,7 +329,13 @@ function SidebarLink({ icon, label, active = false }) {
   );
 }
 
-function RadioButton({ label, selected, onClick }) {
+interface RadioButtonProps {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}
+
+function RadioButton({ label, selected, onClick }: RadioButtonProps) {
   return (
     <button 
       onClick={onClick}
@@ -341,7 +353,12 @@ function RadioButton({ label, selected, onClick }) {
   );
 }
 
-function FormInput({ label, placeholder }) {
+interface FormInputProps {
+  label: string;
+  placeholder: string;
+}
+
+function FormInput({ label, placeholder }: FormInputProps) {
   return (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-bold text-gray-700">{label}</label>

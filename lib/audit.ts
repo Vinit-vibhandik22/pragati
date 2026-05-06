@@ -36,6 +36,10 @@ export const AuditActions = {
   grievanceFiled: (actorId: string, grievanceId: string) =>
     ({ actor_id: actorId, action: 'grievance_filed', target_type: 'grievance' as const, target_id: grievanceId }),
 
+  // Alias used by grievances/route.ts
+  grievanceRegistered: (actorId: string, grievanceId: string) =>
+    ({ actor_id: actorId, action: 'grievance_registered', target_type: 'grievance' as const, target_id: grievanceId }),
+
   grievanceStatusChanged: (actorId: string, grievanceId: string, oldStatus: string, newStatus: string) =>
     ({
       actor_id: actorId,

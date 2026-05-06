@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     }
 
     // Audit log
-    logAudit(supabase, AuditActions.grievanceRegistered(user.id, grievanceId, analysis.priority))
+    logAudit(supabase, AuditActions.grievanceRegistered(user.id, grievanceId))
 
     return NextResponse.json({
       success: true,
