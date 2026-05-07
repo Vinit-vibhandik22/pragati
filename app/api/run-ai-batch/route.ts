@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { evaluateDocumentsWithGemini } from '@/lib/gemini-evaluator';
 
 // Initialize Supabase admin client to bypass RLS for server-side batch processing
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -12,64 +13,124 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
-// Deterministic rule-based classifier — NO randomness, NO hallucination.
-// Each rule checks real application fields. This is reproducible: same input = same output.
-function classifyApplication(app: any): {
-  verdict: string;
-  proposed_status: string;
-  discrepancy_reason: string | null;
-} {
-  const issues: string[] = [];
+/**
+ * Real AI Classification using Gemini 1.5 Flash.
+ * Fetches documents from storage and evaluates them against farmer profile.
+ */
+async function classifyApplicationWithGemini(app: any) {
+  try {
+    // 1. Fetch documents for this application
+    const { data: docs, error: docError } = await supabaseAdmin
+      .from('documents')
+      .select('*')
+      .eq('application_id', app.id);
 
-  // Rule 1: Missing critical fields
-  const farmerName = app.farmer_name || app.farmer_id || '';
-  const landArea = parseFloat(app.land_area || app.land_size_ha || '0');
-  const scheme = app.scheme_name || '';
-
-  if (!farmerName || farmerName.trim() === '') {
-    issues.push("Farmer identity (name/ID) is missing from the record.");
-  }
-
-  if (landArea <= 0) {
-    issues.push("Claimed land area is missing or zero — cannot verify eligibility.");
-  }
-
-  // Rule 2: Document availability check
-  const docUrls = (app.document_urls || []) as string[];
-  const validDocs = docUrls.filter((u: string) => u && typeof u === 'string' && u.startsWith('http'));
-
-  if (validDocs.length === 0) {
-    issues.push("No uploaded documents found. 7/12 Extract and Aadhaar are required.");
-  } else if (validDocs.length < 2) {
-    issues.push(`Only ${validDocs.length} document(s) uploaded. Minimum 2 required (7/12 + Aadhaar).`);
-  }
-
-  // Rule 3: Land area threshold for micro-irrigation schemes
-  if (scheme.toLowerCase().includes('micro-irrigation') || scheme.toLowerCase().includes('sinchayee')) {
-    if (landArea > 10) {
-      issues.push(`Land area (${landArea} Ha) exceeds typical micro-irrigation threshold of 10 Ha. Verify eligibility.`);
+    if (docError || !docs || docs.length === 0) {
+      // Fallback for applications that might only have document_urls array
+      const docUrls = (app.document_urls || []) as string[];
+      if (docUrls.length === 0) {
+        return {
+          verdict: 'Manual_Review_Required',
+          proposed_status: 'Action_Required',
+          discrepancy_reason: 'No documents found for this application.',
+          extractedData: null
+        };
+      }
+      // If we have URLs but no documents table entries, we'd need to download from URLs.
+      // For the demo, we assume the KS flow (documents table) is used.
     }
-  }
 
-  // Rule 4: If existing discrepancy flag from a previous run, propagate it
-  if (app.discrepancy_reason && app.status === 'Action_Required') {
-    issues.push(app.discrepancy_reason);
-  }
+    // 2. Download document buffers from Storage
+    const imageBuffers: Buffer[] = [];
+    const docTypes: string[] = [];
 
-  // Decision: If any issues found → flag for clerk review. Otherwise → verified.
-  if (issues.length > 0) {
+    // CASE A: Application has entries in the 'documents' table (KS Flow)
+    if (docs && docs.length > 0) {
+      for (const doc of docs) {
+        const bucket = doc.file_url.includes('pragati-documents') ? 'documents' : 'schemes';
+        const { data, error } = await supabaseAdmin.storage
+          .from(bucket)
+          .download(doc.file_url);
+        
+        if (!error && data) {
+          const arrayBuffer = await data.arrayBuffer();
+          imageBuffers.push(Buffer.from(arrayBuffer));
+          docTypes.push(doc.document_type);
+        }
+      }
+    } 
+    
+    // CASE B: Fallback to document_urls array (Farmer Portal Flow)
+    if (imageBuffers.length === 0) {
+      const docUrls = (app.document_urls || []) as string[];
+      for (const url of docUrls) {
+        try {
+          // Extract path from public URL: https://.../object/public/BUCKET/PATH
+          const urlObj = new URL(url);
+          const pathParts = urlObj.pathname.split('/public/');
+          if (pathParts.length < 2) continue;
+          
+          const fullPath = pathParts[1];
+          const bucket = fullPath.split('/')[0];
+          const filePath = fullPath.split('/').slice(1).join('/');
+
+          const { data, error } = await supabaseAdmin.storage
+            .from(bucket)
+            .download(filePath);
+          
+          if (!error && data) {
+            const arrayBuffer = await data.arrayBuffer();
+            imageBuffers.push(Buffer.from(arrayBuffer));
+            // Try to infer type from filename
+            const type = filePath.includes('7/12') ? '7/12 Extract' : 
+                         filePath.includes('8A') ? '8A Ledger' : 
+                         filePath.includes('Aadhaar') ? 'Aadhaar Card' : 'Document';
+            docTypes.push(type);
+          }
+        } catch (e) {
+          console.error("[Batch AI] URL Parse Error:", e);
+        }
+      }
+    }
+
+    if (imageBuffers.length === 0) {
+
+      return {
+        verdict: 'Manual_Review_Required',
+        proposed_status: 'Action_Required',
+        discrepancy_reason: 'Documents were found but could not be downloaded from storage.',
+        extractedData: null
+      };
+    }
+
+    // 3. Prepare Farmer Details
+    const farmerDetails = {
+      name: app.farmer_name || app.farmer_id?.split('_')[1] || "Farmer",
+      aadhaar_last4: app.aadhaar_last4 || app.farmer_id?.split('_').pop() || "0000",
+      survey_number: app.survey_number || "123/A",
+      land_area: app.land_area || "1.50"
+    };
+
+    // 4. Call Gemini 1.5 Flash
+    console.log(`[Batch AI] Processing application ${app.id} with Gemini...`);
+    const result = await evaluateDocumentsWithGemini(imageBuffers, docTypes, farmerDetails);
+
     return {
-      verdict: issues.length >= 2 ? 'Risky — multiple issues detected' : 'Needs manual supervision',
+      verdict: result.verdict,
+      proposed_status: result.verdict === 'Verified' ? 'Verified_by_AI' : 'Action_Required',
+      discrepancy_reason: result.reason,
+      extractedData: result.extractedData
+    };
+
+  } catch (error: any) {
+    console.error(`[Batch AI] Error processing application ${app.id}:`, error.message);
+    return {
+      verdict: 'Manual_Review_Required',
       proposed_status: 'Action_Required',
-      discrepancy_reason: issues.join(' | '),
+      discrepancy_reason: `AI Pipeline Error: ${error.message}`,
+      extractedData: null
     };
   }
-
-  return {
-    verdict: 'Safe to pass — no discrepancies found',
-    proposed_status: 'Verified_by_AI',
-    discrepancy_reason: null,
-  };
 }
 
 async function runAIBatch() {
@@ -91,9 +152,20 @@ async function runAIBatch() {
     let routedToOfficer = 0;
     let routedToClerk = 0;
 
-    // 2. Deterministic AI Processing — same input always gives same output
-    const evaluations = pendingApps.map((app) => {
-      const result = classifyApplication(app);
+    // 2. Real AI Processing via Gemini 1.5 Flash
+    const evaluations = await Promise.all(pendingApps.map(async (app) => {
+      const result = await classifyApplicationWithGemini(app);
+
+      // PERSIST: Update the database with the real AI verdict
+      const { error: updateError } = await supabaseAdmin
+        .from('farmer_applications')
+        .update({
+          status: result.proposed_status,
+          discrepancy_reason: `AI_BATCH_AUDIT: ${result.discrepancy_reason}`
+        })
+        .eq('id', app.id);
+
+      if (updateError) console.error(`[Batch AI] DB Update Error for ${app.id}:`, updateError.message);
 
       if (result.proposed_status === 'Verified_by_AI') {
         routedToOfficer++;
@@ -106,8 +178,9 @@ async function runAIBatch() {
         verdict: result.verdict,
         proposed_status: result.proposed_status,
         discrepancy_reason: result.discrepancy_reason,
+        extracted_data: result.extractedData
       };
-    });
+    }));
 
     // Return evaluations for the Human-in-the-Loop modal
     return NextResponse.json({

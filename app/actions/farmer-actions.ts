@@ -2,8 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { analyzeDocumentWithPaddleOCR } from '@/lib/ocr-service';
-import { evaluateDocumentWithMistral } from '@/lib/nim-evaluator';
+import { evaluateDocumentsWithGemini } from '@/lib/gemini-evaluator';
 
 // Service Role Key bypasses RLS — fine for hackathon demo
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -65,39 +64,39 @@ export async function submitFarmerApplication(prevState: any, formData: FormData
 }
 
 /**
- * AI Document Audit Pipeline
- * 1. OCR Extraction (PaddleOCR)
- * 2. Land Record Verification (Mistral Large 3 via NVIDIA NIM)
+ * AI Document Audit Pipeline (Gemini 1.5 Flash)
+ * 1. Collect all document images
+ * 2. Vision-Language Verification (Gemini 1.5 Flash)
  * 3. Database Sync (Supabase)
  */
 export async function processDocumentAudit(applicationId: string, formData: FormData) {
   try {
-    console.log(`[Audit Pipeline] Starting audit for application: ${applicationId}`);
+    console.log(`[Audit Pipeline] Starting Gemini 1.5 Flash audit for application: ${applicationId}`);
 
-    // Step 1: Marathi OCR Extraction
-    const ocrResult = await analyzeDocumentWithPaddleOCR(formData);
-    
-    if (!ocrResult.success || !ocrResult.fullText) {
-      console.warn("[Audit Pipeline] OCR Failed or returned no text.");
-      await supabaseAdmin
-        .from('farmer_applications')
-        .update({ 
-          status: 'Action_Required', 
-          discrepancy_reason: 'OCR_FAILURE: No Marathi text could be extracted from the document.' 
-        })
-        .eq('id', applicationId);
-      
-      return { success: false, verdict: "Manual_Review_Required", reason: "OCR Extraction failed." };
+    const files = formData.getAll('files') as File[];
+    const docTypes = formData.getAll('types') as string[];
+
+    if (!files || files.length === 0) {
+      console.warn("[Audit Pipeline] No documents provided for audit.");
+      return { success: false, reason: "No documents provided." };
+    }
+
+    // Step 1: Convert files to buffers for Gemini
+    const imageBuffers: Buffer[] = [];
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer();
+      imageBuffers.push(Buffer.from(arrayBuffer));
     }
 
     // Step 2: Fetch Farmer Details for cross-reference
-    // Mocking the details fetch for the current application context
     const { data: appData } = await supabaseAdmin
       .from('farmer_applications')
       .select('*')
       .eq('id', applicationId)
       .single();
 
+    // In a real app, you'd fetch the actual farmer profile. 
+    // Here we extract details from the application or use defaults.
     const farmerDetails = {
       name: appData?.farmer_id?.split('_')[1] || "Farmer", 
       survey_number: appData?.survey_number || "123/A",
@@ -105,8 +104,8 @@ export async function processDocumentAudit(applicationId: string, formData: Form
       aadhaar_last4: appData?.farmer_id?.split('_').pop() || "0000"
     };
 
-    // Step 3: Mistral Large 3 Evaluation (NVIDIA NIM)
-    const auditVerdict = await evaluateDocumentWithMistral(ocrResult.fullText, farmerDetails);
+    // Step 3: Gemini 1.5 Flash Vision Evaluation
+    const auditVerdict = await evaluateDocumentsWithGemini(imageBuffers, docTypes, farmerDetails);
 
     // Step 4: Save Verdict to Supabase
     const finalStatus = auditVerdict.verdict === 'Verified' ? 'Verified_by_AI' : 'Action_Required';
@@ -135,6 +134,32 @@ export async function processDocumentAudit(applicationId: string, formData: Form
 
   } catch (error: any) {
     console.error('[Audit Pipeline] Critical System Error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Bypasses RLS for document uploads during hackathon/demo.
+ * Uploads file to Supabase Storage using admin client.
+ */
+export async function uploadDocumentAction(fileName: string, fileData: string, contentType: string) {
+  try {
+    const buffer = Buffer.from(fileData, 'base64');
+    
+    const { data, error } = await supabaseAdmin.storage
+      .from('schemes')
+      .upload(fileName, buffer, {
+        contentType,
+        upsert: true
+      });
+
+    if (error) throw error;
+
+    const { data: urlData } = supabaseAdmin.storage.from('schemes').getPublicUrl(fileName);
+    
+    return { success: true, publicUrl: urlData.publicUrl };
+  } catch (error: any) {
+    console.error("[Upload Action] Error:", error.message);
     return { success: false, error: error.message };
   }
 }

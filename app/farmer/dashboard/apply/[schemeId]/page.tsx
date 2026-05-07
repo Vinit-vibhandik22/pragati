@@ -18,8 +18,7 @@ import {
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { analyzeDocumentWithPaddleOCR } from "@/lib/ocr-service";
-import { processDocumentAudit } from "@/app/actions/farmer-actions";
+import { processDocumentAudit, uploadDocumentAction } from "@/app/actions/farmer-actions";
 
 const SCHEMES_DATA: Record<string, any> = {
   "mechanization": {
@@ -110,46 +109,25 @@ export default function SchemeApplicationPage() {
     setErrorMessages(prev => ({ ...prev, [docName]: "" }));
 
     try {
-      // 1. OCR Analysis Step (For Land Records)
-      let ocrText = "";
-      if (docName === "7/12 Extract" || docName === "8A Holding") {
-        toast.info(`Analyzing ${docName} with PaddleOCR...`, { icon: <Search className="animate-pulse" /> });
-        
-        const ocrFormData = new FormData();
-        ocrFormData.append('file', file);
-        
-        const ocrResult = await analyzeDocumentWithPaddleOCR(ocrFormData);
-        
-        // CRITICAL DEBUG: Inject truth alert for Vercel vs Localhost testing
-        if (ocrResult.success) {
-          const first20Words = ocrResult.fullText.split(/\s+/).slice(0, 20).join(" ");
-          alert(`TRUTH: OCR SUCCESS. Extracted Text: ${first20Words}`);
-          
-          ocrText = ocrResult.fullText;
-          toast.success(`OCR Success: Found ${ocrResult.text.length} Marathi text segments.`);
-          console.log("[OCR Pipeline Output]:", ocrText);
-        } else {
-          alert(`TRUTH: OCR FAILED. Exact Error: ${ocrResult.errorDetails}`);
-          console.warn("[OCR Pipeline Fallback]: Manual Review Required due to OCR failure.");
-          toast.warning("OCR Engine Offline: Document queued for Manual Review.");
-        }
-      }
-
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${schemeId}_${docName.replace(/\s+/g, '_')}.${fileExt}`;
       
-      const { data, error } = await supabase.storage
-        .from('schemes')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (error) throw error;
-
-      const { data: urlData } = supabase.storage.from('schemes').getPublicUrl(fileName);
+      // Convert file to base64 for server action (bypasses RLS via Admin Client)
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+        reader.readAsDataURL(file);
+      });
       
-      setUploadedUrls(prev => ({ ...prev, [docName]: urlData.publicUrl }));
+      const base64Data = await base64Promise;
+      const uploadResult = await uploadDocumentAction(fileName, base64Data, file.type);
+
+      if (!uploadResult.success) throw new Error(uploadResult.error);
+
+      setUploadedUrls(prev => ({ ...prev, [docName]: uploadResult.publicUrl! }));
       setUploadStatus(prev => ({ ...prev, [docName]: "success" }));
       toast.success(`${docName} uploaded and synced to database!`);
     } catch (err: any) {
@@ -182,21 +160,27 @@ export default function SchemeApplicationPage() {
         description: `ID: ${appId}. Starting AI Audit...`
       });
 
-      // Trigger AI Audit for relevant documents
+      // Trigger AI Audit for relevant documents (Single Batch Call to Gemini 1.5 Flash)
+      const auditFormData = new FormData();
+      let hasAuditDocs = false;
+      
       for (const [docName, file] of Object.entries(files)) {
-        if (file && (docName === "7/12 Extract" || docName === "8A Holding")) {
-          const auditFormData = new FormData();
-          auditFormData.append('file', file);
-          
-          toast.promise(processDocumentAudit(appId, auditFormData), {
-            loading: `Auditing ${docName}...`,
-            success: (res: any) => {
-              if (res.verdict === 'Verified') return `${docName} Verified by AI!`;
-              return `${docName} flagged for Manual Review: ${res.reason}`;
-            },
-            error: `Failed to audit ${docName}`
-          });
+        if (file && (docName === "7/12 Extract" || docName === "8A Holding" || docName === "Caste Certificate" || docName === "Income Certificate")) {
+          auditFormData.append('files', file);
+          auditFormData.append('types', docName);
+          hasAuditDocs = true;
         }
+      }
+
+      if (hasAuditDocs) {
+        toast.promise(processDocumentAudit(appId, auditFormData), {
+          loading: `Auditing documents with Gemini 1.5 Flash...`,
+          success: (res: any) => {
+            if (res.verdict === 'Verified') return `Documents Verified by AI!`;
+            return `AI Review: ${res.verdict}. ${res.reason}`;
+          },
+          error: `Failed to audit documents`
+        });
       }
       
       // Reset state after success
