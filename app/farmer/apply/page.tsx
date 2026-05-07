@@ -9,14 +9,12 @@ import {
   Phone, 
   Globe, 
   Smartphone,
-  Upload,
   CheckCircle2,
   Loader2,
   FileCheck,
   ArrowRight,
   Sparkles
 } from "lucide-react";
-import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { submitFarmerApplication } from "@/app/actions/farmer-actions";
@@ -24,7 +22,6 @@ import { submitFarmerApplication } from "@/app/actions/farmer-actions";
 export default function FarmerPortal() {
   const [language, setLanguage] = useState("Marathi");
   const [loginType, setLoginType] = useState("individual");
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const router = useRouter();
 
   const [state, formAction, isPending] = useActionState(submitFarmerApplication, null);
@@ -42,15 +39,6 @@ export default function FarmerPortal() {
       toast.error(state.error);
     }
   }, [state]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (acceptedFiles) => {
-      setUploadedFiles(acceptedFiles);
-      toast.success(`${acceptedFiles.length} file(s) attached`);
-    },
-    accept: { 'image/*': [], 'application/pdf': [] },
-    maxFiles: 3,
-  });
 
   // SUCCESS STATE — full-page acknowledgment
   if (state?.success) {
@@ -282,42 +270,6 @@ export default function FarmerPortal() {
               placeholder="Namo Shetkari Mahasanman Nidhi"
               defaultValue="Namo Shetkari Mahasanman Nidhi"
             />
-
-            <div className="md:col-span-2 mt-4">
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                {language === "Marathi" ? "कागदपत्रे अपलोड करा" : "Upload Documents"}
-              </label>
-              <div 
-                {...getRootProps()} 
-                className={`border-2 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center transition-all cursor-pointer
-                  ${isDragActive ? "border-[#fe932c] bg-orange-50" : "border-gray-200 hover:border-[#1B4332] bg-gray-50"}`}
-              >
-                <input {...getInputProps()} />
-                <div className="h-16 w-16 bg-[#1B4332]/10 rounded-full flex items-center justify-center mb-4">
-                  <Upload className="h-8 w-8 text-[#1B4332]" />
-                </div>
-                {uploadedFiles.length > 0 ? (
-                  <div className="text-center">
-                    <p className="text-sm font-bold text-emerald-600 flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4" />
-                      {uploadedFiles.length} file(s) attached
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {uploadedFiles.map(f => f.name).join(', ')}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm font-bold text-gray-700">
-                      {language === "Marathi" ? "येथे फायली ड्रॅग आणि ड्रॉप करा" : "Drag and Drop files here"}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {language === "Marathi" ? "किंवा ब्राउझ करण्यासाठी टॅप करा (PDF, JPG - Max 5MB)" : "or Tap to Browse (PDF, JPG - Max 5MB)"}
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
 
             <div className="md:col-span-2 flex justify-end mt-4">
               <button 

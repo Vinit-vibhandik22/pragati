@@ -112,18 +112,11 @@ export default function SchemeApplicationPage() {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${schemeId}_${docName.replace(/\s+/g, '_')}.${fileExt}`;
       
-      // Convert file to base64 for server action (bypasses RLS via Admin Client)
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.readAsDataURL(file);
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('fileName', fileName);
       
-      const base64Data = await base64Promise;
-      const uploadResult = await uploadDocumentAction(fileName, base64Data, file.type);
+      const uploadResult = await uploadDocumentAction(formData);
 
       if (!uploadResult.success) throw new Error(uploadResult.error);
 

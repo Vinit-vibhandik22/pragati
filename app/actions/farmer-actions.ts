@@ -142,14 +142,19 @@ export async function processDocumentAudit(applicationId: string, formData: Form
  * Bypasses RLS for document uploads during hackathon/demo.
  * Uploads file to Supabase Storage using admin client.
  */
-export async function uploadDocumentAction(fileName: string, fileData: string, contentType: string) {
+export async function uploadDocumentAction(formData: FormData) {
   try {
-    const buffer = Buffer.from(fileData, 'base64');
+    const file = formData.get('file') as File;
+    const fileName = formData.get('fileName') as string;
+    
+    if (!file || !fileName) throw new Error("Missing file or fileName");
+
+    const buffer = Buffer.from(await file.arrayBuffer());
     
     const { data, error } = await supabaseAdmin.storage
       .from('schemes')
       .upload(fileName, buffer, {
-        contentType,
+        contentType: file.type,
         upsert: true
       });
 

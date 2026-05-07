@@ -85,6 +85,25 @@ export default function ClerkQueuePage() {
 
       if (error) throw error;
       setApplications(data || []);
+
+      // Auto-restore cached AI Audit Reports from the database!
+      const initialAudits: Record<string, any> = {};
+      data?.forEach((app: any) => {
+        if (app.extracted_text) {
+          try {
+            const parsed = typeof app.extracted_text === 'string' 
+              ? JSON.parse(app.extracted_text) 
+              : app.extracted_text;
+            
+            if (parsed && parsed.overall_verdict) {
+              initialAudits[app.id] = parsed;
+            }
+          } catch (e) {
+            console.error("Failed to parse cached audit report", e);
+          }
+        }
+      });
+      setAuditResults(prev => ({ ...prev, ...initialAudits }));
     } catch (err: any) {
       toast.error("Failed to load queue: " + err.message);
     } finally {
@@ -389,11 +408,21 @@ export default function ClerkQueuePage() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                         <button 
                           onClick={() => handleDeepAudit(app.id)}
-                          disabled={auditingAppId === app.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600 rounded-lg transition-all"
+                          disabled={auditingAppId === app.id || !!auditResults[app.id]}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                            auditResults[app.id]
+                              ? 'text-emerald-700 bg-emerald-50 border border-emerald-200 cursor-default'
+                              : 'text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600'
+                          }`}
                         >
-                          {auditingAppId === app.id ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
-                          {auditingAppId === app.id ? t('analyzing_doc') : t('verify_ai_audit')}
+                          {auditingAppId === app.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : auditResults[app.id] ? (
+                            <CheckCircle2 size={14} />
+                          ) : (
+                            <ClipboardCheck size={14} />
+                          )}
+                          {auditingAppId === app.id ? t('analyzing_doc') : auditResults[app.id] ? 'Cached' : t('verify_ai_audit')}
                         </button>
                         <button 
                           onClick={() => handleRequestSMS(app)}

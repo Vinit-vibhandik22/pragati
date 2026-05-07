@@ -72,7 +72,7 @@ async function classifyApplicationWithGemini(app: any) {
           
           const fullPath = pathParts[1];
           const bucket = fullPath.split('/')[0];
-          const filePath = fullPath.split('/').slice(1).join('/');
+          const filePath = decodeURIComponent(fullPath.split('/').slice(1).join('/'));
 
           const { data, error } = await supabaseAdmin.storage
             .from(bucket)

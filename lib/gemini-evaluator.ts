@@ -2,9 +2,27 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '');
 
+function getMimeType(buffer: Buffer): string {
+  if (buffer.length > 4) {
+    // PDF Magic Number: %PDF (25 50 44 46)
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+      return "application/pdf";
+    }
+    // PNG Magic Number: 89 50 4E 47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+      return "image/png";
+    }
+  }
+  return "image/jpeg"; // Default fallback
+}
+
 export interface GeminiVerdict {
   verdict: 'Verified' | 'Rejected' | 'Manual_Review_Required';
   reason: string;
+  document_evaluations: {
+    status: 'Verified' | 'Rejected' | 'Manual_Review_Required';
+    reason: string;
+  }[];
   extractedData: {
     surveyNumber: string;
     landArea: string;
@@ -51,24 +69,27 @@ DOCUMENT CONTEXT:
 - Expected Land Area: ${farmerDetails.land_area} Ha
 - Aadhaar Last 4: ${farmerDetails.aadhaar_last4}
 
-STRICT RULES:
-1. Each image has a label. If image does not match its label → Rejected, reason: "Wrong document type"
-2. Land area: 0.20 to 6.0 Ha only. 1 Hectare = 100 Aar. हेव्टर/हेव्टार = हेक्टर
-3. Caste must be SC or Nav-Boudha only
-4. Income must be below ₹1,50,000
-5. Farmer name must appear in document (allow Marathi spelling variation)
-6. Joint ownership (सामायिक खातेदार): acceptable if farmer name present in list
-7. Official govt seal or signature must be visible — if absent → Manual_Review_Required
-8. If any required field unreadable due to scan quality → Manual_Review_Required (never guess numbers)
-9. Random photo, blank page, non-govt document → Rejected immediately
+RULES FOR INDIVIDUAL DOCUMENTS:
+1. Evaluate EACH document individually.
+2. Aadhaar Card: Mark "Verified" if name mostly matches and last 4 digits match. Ignore land area or caste constraints for this document.
+3. 7/12 Extract: 7/12 extracts often have multiple joint owners (सामायिक खातेदार). You MUST find the specific farmer whose name matches the Aadhaar card/database. Then, find their INDIVIDUAL land holding. Mark "Verified" if their name is present. If their specific individual land holding is less than 0.20 Ha or greater than 6.0 Ha, mark this specific document as "Rejected".
+4. 8A Holding/Ledger: Mark "Verified" if name matches. However, if their total individual land area is less than 0.20 Ha or greater than 6.0 Ha, mark this specific document as "Rejected" (just like the 7/12 extract).
+5. Caste Certificate: Mark "Verified" if the caste is clearly SC (Scheduled Caste) or Nav-Boudha, and the name matches. If the caste is anything else, mark this specific document as "Rejected".
+6. Missing documents do NOT fail the documents that are already provided.
 
-DEFAULT STANCE: Skeptical. Verified only when ALL rules pass clearly.
+You must return a "document_evaluations" array containing exactly one evaluation per input document, in the exact same order they were provided.
 
 Return ONLY valid JSON. No markdown. No explanation outside JSON.
 
 {
   "verdict": "Verified" | "Rejected" | "Manual_Review_Required",
-  "reason": "One sentence in English explaining decision",
+  "reason": "Overall reason",
+  "document_evaluations": [
+    {
+      "status": "Verified" | "Rejected" | "Manual_Review_Required",
+      "reason": "Specific reason for this exact document"
+    }
+  ],
   "extractedData": {
     "surveyNumber": "",
     "landArea": "",
@@ -81,7 +102,6 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
   "failureReasons": []
 }`;
 
-    // Map buffers to labeled parts
     const imageParts: any[] = [];
     imageBuffers.forEach((buffer, index) => {
       const type = documentTypes[index] || "Unknown Document";
@@ -89,7 +109,7 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
       imageParts.push({
         inlineData: {
           data: buffer.toString("base64"),
-          mimeType: "image/jpeg"
+          mimeType: getMimeType(buffer)
         }
       });
     });
@@ -127,6 +147,7 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
     return {
       verdict: "Manual_Review_Required",
       reason: `AI service unavailable: ${error.message}`,
+      document_evaluations: [],
       extractedData: null,
       failureReasons: [error.message]
     };
