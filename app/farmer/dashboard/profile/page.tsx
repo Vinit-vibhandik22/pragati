@@ -39,6 +39,8 @@ export default function ProfilePage() {
     }
   };
 
+  const generatedFarmerId = `FARMER_${(formData.name || 'FARMER').replace(/\s+/g, '_').toUpperCase()}_${(formData.aadhaar || '0000').slice(-4)}`;
+
   return (
     <div className="flex flex-col gap-8">
       {/* Profile Completeness - NOW DYNAMIC */}
@@ -81,7 +83,7 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
           <EditableField 
             label={t('farmer_id_label')} 
-            value="FMR20241020" 
+            value={generatedFarmerId} 
             readonly 
             required 
           />
