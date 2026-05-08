@@ -80,7 +80,7 @@ export default function ClerkQueuePage() {
       const { data, error } = await supabase
         .from('farmer_applications')
         .select('*')
-        .in('status', ['Action_Required', 'Pending'])
+        .in('status', ['Action_Required', 'Pending', 'Verified_by_AI'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
