@@ -79,6 +79,16 @@ export default function SchemeApplicationPage() {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [validationStatuses, setValidationStatuses] = useState<Record<string, ValidationStatus>>({});
   const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
+  const [subsidyReason, setSubsidyReason] = useState<string>("");
+
+  const SUBSIDY_REASONS = [
+    { value: "Tractor", label: { EN: "Tractor", MR: "ट्रॅक्टर" } },
+    { value: "Power Tiller", label: { EN: "Power Tiller", MR: "पॉवर टिलर" } },
+    { value: "Rotavator", label: { EN: "Rotavator", MR: "रोटाव्हेटर" } },
+    { value: "Drip Irrigation System", label: { EN: "Drip Irrigation System", MR: "ठिबक सिंचन प्रणाली" } },
+    { value: "Sprinkler Irrigation System", label: { EN: "Sprinkler Irrigation System", MR: "तुषार सिंचन प्रणाली" } },
+    { value: "Solar Pump", label: { EN: "Solar Pump", MR: "सौर पंप" } }
+  ];
 
   const supabase = createClient();
 
@@ -190,6 +200,7 @@ export default function SchemeApplicationPage() {
           farmer_id: farmerId,
           scheme_id: schemeId,
           scheme_name: scheme.name[lang],
+          subsidy_reason: subsidyReason || 'General',
           document_urls: Object.values(uploadedUrls),
           status: 'Pending'
         }])
@@ -239,7 +250,7 @@ export default function SchemeApplicationPage() {
     }
   };
 
-  const allSubmitted = scheme.documents.every((doc: string) => uploadStatus[doc] === "success");
+  const allSubmitted = scheme.documents.every((doc: string) => uploadStatus[doc] === "success") && subsidyReason !== "";
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">
@@ -299,6 +310,33 @@ export default function SchemeApplicationPage() {
             onSubmit={() => handleIndividualSubmit(doc)}
           />
         ))}
+      </div>
+
+      {/* Subsidy Reason Selection */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <label className="block text-sm font-bold text-gray-800 mb-4">
+          {lang === "EN" ? "Select the reason for subsidy / component needed" : "सबसिडीचे कारण / आवश्यक घटक निवडा"}
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {SUBSIDY_REASONS.map((reason) => (
+            <button
+              key={reason.value}
+              onClick={() => setSubsidyReason(reason.value)}
+              className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left
+                ${subsidyReason === reason.value 
+                  ? "border-[#1B4332] bg-[#1B4332]/5 shadow-sm" 
+                  : "border-gray-100 hover:border-[#1B4332]/30 hover:bg-gray-50"}`}
+            >
+              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors
+                ${subsidyReason === reason.value ? "border-[#1B4332]" : "border-gray-300"}`}>
+                {subsidyReason === reason.value && <div className="h-2.5 w-2.5 rounded-full bg-[#1B4332]"></div>}
+              </div>
+              <span className={`text-sm font-bold ${subsidyReason === reason.value ? "text-[#1B4332]" : "text-gray-700"}`}>
+                {reason.label[lang]}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Global Submit */}
