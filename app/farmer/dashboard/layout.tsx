@@ -110,7 +110,7 @@ export default function FarmerDashboardLayout({
             </div>
             {menuItems.map((item) => {
               const isActive = pathname === item.href;
-              const isLocked = item.href === "#" || !["/farmer/dashboard/profile", "/farmer/dashboard/apply", "/farmer/dashboard/bank"].some(p => item.href.startsWith(p));
+              const isLocked = item.href === "#" || !["/farmer/dashboard/profile", "/farmer/dashboard/apply", "/farmer/dashboard/bank", "/farmer/dashboard/history"].some(p => item.href.startsWith(p));
               
               const content = (
                 <>
