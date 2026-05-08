@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
-    Your task is to analyze the provided Quotation and Payment Receipt/Invoice for a farmer's subsidy application.
+    Your task is to analyze the provided Quotation (first image) and Payment Receipt/Invoice (second image) for a farmer's subsidy application.
 
     Farmer Details:
     - Name: ${farmerName}
@@ -43,21 +43,34 @@ export async function POST(req: Request) {
     - Location: Maharashtra
 
     Verification Rules:
-    1. Identity: The farmer's name on both documents must match or be a close variation of "${farmerName}".
+    1. Identity: The farmer's name on BOTH documents must match or be a close variation of "${farmerName}". Both documents must be issued to the same farmer.
     2. GST Validation: The receipt/invoice MUST contain a valid Maharashtra GST Number starting with '27'.
     3. Technical Compliance: If applying for a Tractor, the HP must be below 45 HP.
-    4. Currency: The currency must be INR (₹). No foreign currency allowed.
+    4. Currency: The currency must be INR. No foreign currency allowed.
     5. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
+    6. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a drip irrigation quotation must not have a tractor receipt.
+    7. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
 
-    Respond ONLY with a JSON object in the following format (no markdown code blocks, just raw JSON):
+    Extract the following details from the documents:
+    - farmerNameOnDoc: The farmer/customer name found on the documents
+    - gstNumber: GST number from the receipt/invoice
+    - quotationItem: The main item/equipment described in the Quotation
+    - receiptItem: The main item/equipment described in the Receipt
+    - quotedPrice: The total price shown on the Quotation (numeric value)
+    - receiptPrice: The total amount shown on the Receipt (numeric value)
+
+    Respond ONLY with a JSON object (no markdown code blocks, no extra text, just raw JSON):
     {
-      "verdict": "Verified" | "Rejected",
-      "flag": "CLEAN" | "INVALID_GST_FORMAT" | "HP_THRESHOLD_EXCEEDED" | "IDENTITY_MISMATCH" | "OUT_OF_JURISDICTION" | "INVALID_CURRENCY",
+      "verdict": "Verified" or "Rejected",
+      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH",
       "reason": "Detailed explanation of your findings",
       "extractedDetails": {
         "farmerNameOnDoc": "...",
         "gstNumber": "...",
-        "itemDescription": "..."
+        "quotationItem": "...",
+        "receiptItem": "...",
+        "quotedPrice": "...",
+        "receiptPrice": "..."
       }
     }
     `;
@@ -83,18 +96,73 @@ export async function POST(req: Request) {
       };
     }
 
-    // ---- New validation: ensure quoted item matches the subsidy reason ----
-    if (auditResult.verdict === "Verified" && auditResult.extractedDetails?.itemDescription) {
-      const itemDesc = auditResult.extractedDetails.itemDescription.toLowerCase();
-      const expected = subsidyReason?.toLowerCase() || "";
-      // Simple keyword check – you can expand with a map of allowed terms per subsidy
-      if (expected.includes('drip') && itemDesc.includes('tractor')) {
-        auditResult = {
-          ...auditResult,
-          verdict: "Rejected",
-          flag: "EQUIPMENT_MISMATCH",
-          reason: `Quotation item (${auditResult.extractedDetails.itemDescription}) does not match the requested subsidy (${subsidyReason}).`,
-        };
+    // ---- Additional server-side validation as a safety net ----
+    if (auditResult.verdict === "Verified") {
+      const details = auditResult.extractedDetails || {};
+
+      // 1. Equipment vs subsidy mismatch
+      if (details.quotationItem) {
+        const itemDesc = details.quotationItem.toLowerCase();
+        const expected = subsidyReason?.toLowerCase() || "";
+        // Cross-check: drip subsidy should not have tractor docs and vice-versa
+        const mismatch =
+          (expected.includes('drip') && itemDesc.includes('tractor')) ||
+          (expected.includes('tractor') && itemDesc.includes('drip'));
+        if (mismatch) {
+          auditResult = {
+            ...auditResult,
+            verdict: "Rejected",
+            flag: "EQUIPMENT_MISMATCH",
+            reason: `Quotation item (${details.quotationItem}) does not match the requested subsidy (${subsidyReason}).`,
+          };
+        }
+      }
+
+      // 2. Item consistency between quotation and receipt
+      if (auditResult.verdict === "Verified" && details.quotationItem && details.receiptItem) {
+        const qItem = details.quotationItem.trim().toLowerCase();
+        const rItem = details.receiptItem.trim().toLowerCase();
+        // Check if one mentions a completely different category than the other
+        if (
+          (qItem.includes('tractor') && rItem.includes('drip')) ||
+          (qItem.includes('drip') && rItem.includes('tractor'))
+        ) {
+          auditResult = {
+            ...auditResult,
+            verdict: "Rejected",
+            flag: "ITEM_MISMATCH",
+            reason: `Quotation item (${details.quotationItem}) does not match receipt item (${details.receiptItem}).`,
+          };
+        }
+      }
+
+      // 3. Price consistency (allow small tolerance)
+      if (auditResult.verdict === "Verified" && details.quotedPrice && details.receiptPrice) {
+        const qPrice = parseFloat(details.quotedPrice.toString().replace(/[^0-9.]/g, ""));
+        const rPrice = parseFloat(details.receiptPrice.toString().replace(/[^0-9.]/g, ""));
+        if (!isNaN(qPrice) && !isNaN(rPrice) && Math.abs(qPrice - rPrice) > 500) {
+          auditResult = {
+            ...auditResult,
+            verdict: "Rejected",
+            flag: "PRICE_MISMATCH",
+            reason: `Quoted price (₹${qPrice}) differs from receipt amount (₹${rPrice}).`,
+          };
+        }
+      }
+
+      // 4. Farmer name consistency
+      if (auditResult.verdict === "Verified" && details.farmerNameOnDoc && farmerName) {
+        const nameOnDoc = details.farmerNameOnDoc.trim().toLowerCase();
+        const expectedName = farmerName.trim().toLowerCase();
+        // Only flag if clearly different (not a substring match)
+        if (nameOnDoc !== expectedName && !nameOnDoc.includes(expectedName) && !expectedName.includes(nameOnDoc)) {
+          auditResult = {
+            ...auditResult,
+            verdict: "Rejected",
+            flag: "IDENTITY_MISMATCH",
+            reason: `Farmer name on documents (${details.farmerNameOnDoc}) does not match provided name (${farmerName}).`,
+          };
+        }
       }
     }
 

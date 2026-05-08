@@ -1,7 +1,19 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { AlertCircle, CheckCircle2, Clock, FileSpreadsheet, FileText } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  FileText,
+  CheckCircle2,
+  Clock,
+  Upload,
+  Loader2,
+  AlertCircle,
+  Receipt,
+  FileSpreadsheet
+} from "lucide-react";
+import { toast } from "sonner";
+import { useLanguage } from "@/context/LanguageContext";
 
 // Helper to convert technical AI flags / messages into farmer‑friendly text
 function getFriendlyReason(rawReason: string | null): string | null {
@@ -15,15 +27,21 @@ function getFriendlyReason(rawReason: string | null): string | null {
         case "INVALID_GST_FORMAT":
           return "GST number is missing or not valid. Please upload a proper GST invoice.";
         case "HP_THRESHOLD_EXCEEDED":
-          return "The machine’s horsepower exceeds the allowed limit for this subsidy.";
+          return "The machine's horsepower exceeds the allowed limit for this subsidy.";
         case "IDENTITY_MISMATCH":
-          return "The name on the document does not match your Aadhaar/7‑12 records.";
+          return "The name on the document does not match your Aadhaar/7‑12 records. Please check and re‑upload.";
         case "OUT_OF_JURISDICTION":
           return "Document appears to be from outside Maharashtra. Please provide a Maharashtra document.";
         case "INVALID_CURRENCY":
           return "The amount is shown in a foreign currency. It must be in Indian Rupees (₹).";
         case "PARSE_ERROR":
           return "We could not read the document. Please upload a clearer copy.";
+        case "EQUIPMENT_MISMATCH":
+          return "The item in your quotation does not match the subsidy you applied for. Please upload the correct quotation.";
+        case "ITEM_MISMATCH":
+          return "The item on the quotation and receipt do not match. Both should be for the same product.";
+        case "PRICE_MISMATCH":
+          return "The price on the quotation and the receipt are different. Please check and re‑upload matching documents.";
         default:
           return parsed.reason || null;
       }
@@ -34,28 +52,15 @@ function getFriendlyReason(rawReason: string | null): string | null {
     // Not JSON – treat as plain text, but still simplify known patterns
     const lower = rawReason.toLowerCase();
     if (lower.includes("gst")) return "Please ensure the GST number is correct and visible.";
-    if (lower.includes("hp")) return "Check that the machine’s horsepower is within the allowed limit.";
-    if (lower.includes("name")) return "Make sure the farmer’s name matches your Aadhaar/land records.";
+    if (lower.includes("hp")) return "Check that the machine's horsepower is within the allowed limit.";
+    if (lower.includes("name")) return "Make sure the farmer's name matches your Aadhaar/land records.";
     if (lower.includes("currency")) return "Amount must be in Indian Rupees (₹).";
+    if (lower.includes("equipment") || lower.includes("mismatch")) return "The documents do not match the subsidy you applied for.";
     // fallback to original text
     return rawReason;
   }
   return null;
 }
-
-import { createClient } from "@/lib/supabase/client";
-import { 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  Upload, 
-  Loader2, 
-  AlertCircle,
-  Receipt,
-  FileSpreadsheet
-} from "lucide-react";
-import { toast } from "sonner";
-import { useLanguage } from "@/context/LanguageContext";
 
 interface Application {
   id: string;
@@ -63,6 +68,10 @@ interface Application {
   status: string;
   created_at: string;
   document_urls: string[];
+  quotation_url?: string;
+  receipt_url?: string;
+  subsidy_reason?: string;
+  discrepancy_reason?: string;
 }
 
 export default function ApplicationHistoryPage() {
@@ -188,7 +197,7 @@ export default function ApplicationHistoryPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {applications.map((app) => (
+          {applications.map((app: any) => (
             <div key={app.id} className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4 transition-all hover:shadow-md">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
                 <div>

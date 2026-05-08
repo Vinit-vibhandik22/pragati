@@ -247,7 +247,10 @@ export default function Phase3QueuePage() {
                                 <ul className="space-y-1">
                                   <li><span className="font-semibold text-slate-500">Name:</span> {aiResult.extractedDetails.farmerNameOnDoc}</li>
                                   <li><span className="font-semibold text-slate-500">GST:</span> {aiResult.extractedDetails.gstNumber}</li>
-                                  <li><span className="font-semibold text-slate-500">Item:</span> {aiResult.extractedDetails.itemDescription}</li>
+                                  <li><span className="font-semibold text-slate-500">Quotation Item:</span> {aiResult.extractedDetails.quotationItem}</li>
+                                  <li><span className="font-semibold text-slate-500">Receipt Item:</span> {aiResult.extractedDetails.receiptItem}</li>
+                                  <li><span className="font-semibold text-slate-500">Quoted Price:</span> {aiResult.extractedDetails.quotedPrice}</li>
+                                  <li><span className="font-semibold text-slate-500">Receipt Amount:</span> {aiResult.extractedDetails.receiptPrice}</li>
                                 </ul>
                               </div>
                             )}
