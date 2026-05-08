@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useActionState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Home, 
   HelpCircle, 
@@ -11,100 +11,38 @@ import {
   Smartphone,
   CheckCircle2,
   Loader2,
-  FileCheck,
   ArrowRight,
   Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { submitFarmerApplication } from "@/app/actions/farmer-actions";
+import { usePersistedForm } from "@/lib/usePersistedForm";
 
 export default function FarmerPortal() {
   const [language, setLanguage] = useState("Marathi");
   const [loginType, setLoginType] = useState("individual");
   const router = useRouter();
 
-  const [state, formAction, isPending] = useActionState(submitFarmerApplication, null);
+  const [formData, setFormData] = usePersistedForm("farmer_profile", {
+    aadhaar: "",
+    name: "",
+    mobile: "",
+    dob: "20/10/2006",
+    age: "19",
+    gender: "Male"
+  });
 
-  // Toast feedback on state change
-  useEffect(() => {
-    if (state?.success) {
-      toast.success(language === "Marathi" ? "अर्ज यशस्वीरित्या सादर!" : "Application Submitted Successfully!", {
-        description: `Application ID: ${state.applicationId}`,
-        icon: <CheckCircle2 className="text-emerald-500" />,
-        duration: 8000,
-      });
-    }
-    if (state?.error) {
-      toast.error(state.error);
-    }
-  }, [state]);
+  const [isPending, setIsPending] = useState(false);
 
-  // SUCCESS STATE — full-page acknowledgment
-  if (state?.success) {
-    return (
-      <div className="min-h-screen bg-[#f7f9fb] font-sans flex flex-col">
-        <div className="bg-[#B91C1C] text-white py-2 px-4 text-center text-xs font-bold tracking-wider z-[9999] fixed top-0 w-full shadow-md">
-          DEMO ENVIRONMENT ONLY - FOR PRAGATI AI HACKATHON TESTING. NOT AN OFFICIAL GOVERNMENT WEBSITE.
-        </div>
-        <div className="h-8"></div>
-
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-10 md:p-16 max-w-xl w-full text-center">
-            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-emerald-100">
-              <FileCheck className="h-10 w-10 text-emerald-600" />
-            </div>
-            <h2 className="text-3xl font-serif font-bold text-[#1B4332] mb-2">
-              {language === "Marathi" ? "अर्ज यशस्वीरित्या सादर!" : "Application Submitted!"}
-            </h2>
-            <p className="text-gray-500 mb-8">
-              {language === "Marathi"
-                ? "तुमचा अर्ज PRAGATI AI प्रणालीमध्ये नोंदणीकृत झाला आहे."
-                : "Your application has been registered in the PRAGATI AI system."}
-            </p>
-
-            <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 text-left space-y-4 mb-8">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase">Application ID</span>
-                <span className="text-sm font-mono font-bold text-slate-900">{state.applicationId?.slice(0, 8)}...</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase">Farmer ID</span>
-                <span className="text-sm font-mono font-bold text-slate-900">{state.farmerId}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase">Status</span>
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-                  ⏳ Pending AI Verification
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100 flex items-start gap-3 text-left mb-8">
-              <Sparkles className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-indigo-700 leading-relaxed">
-                {language === "Marathi"
-                  ? "तुमचा अर्ज आता PRAGATI AI इंजिनद्वारे स्वयंचलित तपासणीसाठी रांगेत आहे. तपासणीनंतर तो तालुका कार्यालयात पाठवला जाईल."
-                  : "Your application is now queued for automated verification by the PRAGATI AI Engine. After processing, it will be routed to the Taluka office."}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                router.push('/farmer/dashboard/profile');
-              }}
-              className="bg-[#1B4332] text-white px-8 py-3.5 rounded-xl font-bold text-sm hover:bg-[#274e3d] transition-all shadow-lg hover:shadow-xl flex items-center gap-2 mx-auto"
-            >
-              {language === "Marathi" ? "डॅशबोर्डवर जा" : "Go to Dashboard"}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsPending(true);
+    
+    setTimeout(() => {
+      toast.success(language === "Marathi" ? "लॉगिन यशस्वी!" : "Login Successful!");
+      router.push('/farmer/dashboard/profile');
+    }, 1000);
+  };
 
   return (
     <div className="min-h-screen bg-[#f7f9fb] font-sans flex flex-col">
@@ -203,13 +141,13 @@ export default function FarmerPortal() {
         <main className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-10 flex flex-col gap-8">
           <div className="flex flex-col gap-2 border-b border-gray-50 pb-6">
             <h2 className="text-3xl font-serif font-bold text-[#1B4332]">
-              {language === "Marathi" ? "शेतकरी योजना अर्ज" : "Apply for Farmer Scheme"}
+              {language === "Marathi" ? "शेतकरी लॉगिन / नोंदणी" : "Farmer Login / Registration"}
             </h2>
             <div className="h-1 w-20 bg-[#fe932c] rounded-full"></div>
             <p className="text-gray-500 mt-2">
               {language === "Marathi" 
-                ? "कृपया खालील माहिती भरा आणि आवश्यक कागदपत्रे अपलोड करा." 
-                : "Please fill in the details below and upload the required documents."}
+                ? "कृपया प्रणालीमध्ये प्रवेश करण्यासाठी आपले तपशील प्रविष्ट करा." 
+                : "Please enter your details to access the system."}
             </p>
           </div>
 
@@ -233,57 +171,47 @@ export default function FarmerPortal() {
           </div>
 
           <form 
-            action={formAction} 
+            onSubmit={handleLogin} 
             className="grid grid-cols-1 md:grid-cols-2 gap-6"
           >
             <FormInput 
               name="farmerName"
               label={language === "Marathi" ? "शेतकऱ्याचे नाव" : "Farmer Name"} 
               placeholder={language === "Marathi" ? "पूर्ण नाव प्रविष्ट करा" : "Enter full name"}
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
             <FormInput 
               name="aadhaarNumber"
               label={language === "Marathi" ? "आधार क्रमांक" : "Aadhaar Number"} 
               placeholder="XXXX XXXX XXXX"
+              value={formData.aadhaar}
+              onChange={(e) => setFormData({ ...formData, aadhaar: e.target.value })}
               required
             />
             <FormInput 
-              name="surveyNumber"
-              label={language === "Marathi" ? "सर्वेक्षण क्रमांक" : "Survey No."} 
-              placeholder={language === "Marathi" ? "सर्वेक्षण क्रमांक टाका" : "Enter Survey Number"} 
-            />
-            <FormInput 
-              name="district"
-              label={language === "Marathi" ? "जिल्हा" : "District"} 
-              placeholder={language === "Marathi" ? "जिल्हा निवडा" : "Select District"}
+              name="mobileNumber"
+              label={language === "Marathi" ? "मोबाईल क्रमांक" : "Mobile Number"} 
+              placeholder="9876543210"
+              value={formData.mobile}
+              onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
               required
-            />
-            <FormInput 
-              name="taluka"
-              label={language === "Marathi" ? "तालुका" : "Taluka"} 
-              placeholder={language === "Marathi" ? "तालुका प्रविष्ट करा" : "Enter Taluka"} 
-            />
-            <FormInput 
-              name="schemeName"
-              label={language === "Marathi" ? "योजनेचे नाव" : "Scheme Name"} 
-              placeholder="Namo Shetkari Mahasanman Nidhi"
-              defaultValue="Namo Shetkari Mahasanman Nidhi"
             />
 
             <div className="md:col-span-2 flex justify-end mt-4">
               <button 
                 type="submit"
-                disabled={isPending}
+                disabled={isPending || !formData.name || !formData.aadhaar}
                 className="bg-[#1B4332] text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-[#274e3d] transition-all shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-70 disabled:cursor-wait flex items-center gap-3"
               >
                 {isPending ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    {language === "Marathi" ? "सादर करत आहे..." : "Submitting..."}
+                    {language === "Marathi" ? "लॉगिन करत आहे..." : "Logging in..."}
                   </>
                 ) : (
-                  language === "Marathi" ? "अर्ज सादर करा" : "Submit Application"
+                  language === "Marathi" ? "लॉगिन करा" : "Login"
                 )}
               </button>
             </div>
@@ -403,12 +331,14 @@ function RadioButton({ label, selected, onClick }: { label: string; selected: bo
   );
 }
 
-function FormInput({ name, label, placeholder, required = false, defaultValue }: { 
+function FormInput({ name, label, placeholder, required = false, defaultValue, value, onChange }: { 
   name: string; 
   label: string; 
   placeholder: string; 
   required?: boolean;
   defaultValue?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -421,6 +351,8 @@ function FormInput({ name, label, placeholder, required = false, defaultValue }:
         placeholder={placeholder}
         required={required}
         defaultValue={defaultValue}
+        value={value}
+        onChange={onChange}
         className="px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B4332]/20 focus:border-[#1B4332] transition-all text-sm"
       />
     </div>

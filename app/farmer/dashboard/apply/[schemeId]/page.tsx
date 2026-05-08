@@ -134,10 +134,26 @@ export default function SchemeApplicationPage() {
   const handleFinalSubmit = async () => {
     setIsSubmittingAll(true);
     
+    // Read farmer profile from local storage
+    const stored = window.localStorage.getItem('farmer_profile');
+    let farmerName = "Farmer";
+    let aadhaar = "0000";
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.name) farmerName = parsed.name;
+        if (parsed.aadhaar) aadhaar = parsed.aadhaar;
+      } catch (e) {}
+    }
+    const farmerId = `FARMER_${farmerName.replace(/\s+/g, '_').toUpperCase()}_${aadhaar.slice(-4)}`;
+
     try {
       const { data, error } = await supabase
         .from('farmer_applications')
         .insert([{
+          farmer_id: farmerId,
+          farmer_name: farmerName,
+          aadhaar_last4: aadhaar.slice(-4),
           scheme_id: schemeId,
           scheme_name: scheme.name[lang],
           document_urls: Object.values(uploadedUrls),
