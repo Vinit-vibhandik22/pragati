@@ -83,6 +83,21 @@ export async function POST(req: Request) {
       };
     }
 
+    // ---- New validation: ensure quoted item matches the subsidy reason ----
+    if (auditResult.verdict === "Verified" && auditResult.extractedDetails?.itemDescription) {
+      const itemDesc = auditResult.extractedDetails.itemDescription.toLowerCase();
+      const expected = subsidyReason?.toLowerCase() || "";
+      // Simple keyword check – you can expand with a map of allowed terms per subsidy
+      if (expected.includes('drip') && itemDesc.includes('tractor')) {
+        auditResult = {
+          ...auditResult,
+          verdict: "Rejected",
+          flag: "EQUIPMENT_MISMATCH",
+          reason: `Quotation item (${auditResult.extractedDetails.itemDescription}) does not match the requested subsidy (${subsidyReason}).`,
+        };
+      }
+    }
+
     return NextResponse.json({ success: true, audit: auditResult });
 
   } catch (error: any) {
