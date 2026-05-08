@@ -152,8 +152,6 @@ export default function SchemeApplicationPage() {
         .from('farmer_applications')
         .insert([{
           farmer_id: farmerId,
-          farmer_name: farmerName,
-          aadhaar_last4: aadhaar.slice(-4),
           scheme_id: schemeId,
           scheme_name: scheme.name[lang],
           document_urls: Object.values(uploadedUrls),
