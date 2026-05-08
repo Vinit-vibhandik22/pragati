@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const quotationPart = await fetchImage(quotationUrl);
     const receiptPart = await fetchImage(receiptUrl);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
