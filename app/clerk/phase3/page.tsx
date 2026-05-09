@@ -20,6 +20,7 @@ export default function Phase3QueuePage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
+  const [auditFailedAppIds, setAuditFailedAppIds] = useState<string[]>([]);
   
   const { language } = useLanguage();
   const lang = language === "en" ? "EN" : "MR";
@@ -65,6 +66,10 @@ export default function Phase3QueuePage() {
   const handleRunAudit = async (app: any) => {
     setAuditingAppId(app.id);
     const toastId = toast.loading("Running Pragati AI Phase 3 Audit...");
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 seconds timeout
+
     try {
       // Mock farmer name extraction since we don't have a profile table linked directly in this demo
       const farmerNameMatch = app.farmer_id.match(/FARMER_(.*?)_\d{4}/);
@@ -79,8 +84,11 @@ export default function Phase3QueuePage() {
           receiptUrl: app.receipt_url,
           farmerName: farmerName,
           subsidyReason: app.subsidy_reason || app.scheme_name
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       const result = await response.json();
       if (!result.success) throw new Error(result.error);
@@ -96,10 +104,15 @@ export default function Phase3QueuePage() {
       if (updateError) throw updateError;
       
       toast.success("AI Audit Complete", { id: toastId });
+      // Remove from failed apps if it previously failed but now succeeded
+      setAuditFailedAppIds(prev => prev.filter(id => id !== app.id));
       fetchApplications(); // refresh to show audit results
 
     } catch (err: any) {
-      toast.error(`Audit Failed: ${err.message}`, { id: toastId });
+      clearTimeout(timeoutId);
+      // Silently fail, unlock the approve button, and dismiss the loading toast
+      toast.dismiss(toastId);
+      setAuditFailedAppIds(prev => [...prev, app.id]);
     } finally {
       setAuditingAppId(null);
     }
@@ -199,9 +212,11 @@ export default function Phase3QueuePage() {
                     </button>
                     <button 
                       onClick={() => handleFinalApprove(app.id)}
-                      className="px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                      disabled={!aiResult && !auditFailedAppIds.includes(app.id)}
+                      className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors shadow-sm ${(!aiResult && !auditFailedAppIds.includes(app.id)) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                      title={(!aiResult && !auditFailedAppIds.includes(app.id)) ? "You must run the Deep Audit before approving" : "Approve and send to TAO"}
                     >
-                      Approve & Send to TAO
+                      {(!aiResult && auditFailedAppIds.includes(app.id)) ? "Force Approve (Audit Failed)" : "Approve & Send to TAO"}
                     </button>
                   </div>
                 </div>

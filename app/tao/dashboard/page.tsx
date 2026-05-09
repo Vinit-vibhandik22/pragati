@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,6 +23,7 @@ export default function TAODashboard() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
+  const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -43,6 +45,47 @@ export default function TAODashboard() {
     }
     setLoading(false);
   }
+
+  const handleRunAudit = async (app: any) => {
+    setAuditingAppId(app.id);
+    const toastId = toast.loading("Running Pragati AI Deep Audit...");
+    try {
+      const farmerNameMatch = app.farmer_id.match(/FARMER_(.*?)_\d{4}/);
+      const farmerName = farmerNameMatch ? farmerNameMatch[1].replace(/_/g, ' ') : "Farmer";
+
+      const response = await fetch('/api/phase3-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: app.id,
+          quotationUrl: app.quotation_url,
+          receiptUrl: app.receipt_url,
+          farmerName: farmerName,
+          subsidyReason: app.subsidy_reason || app.scheme_name
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error);
+
+      const { error: updateError } = await supabase
+        .from('farmer_applications')
+        .update({
+          discrepancy_reason: JSON.stringify(result.audit)
+        })
+        .eq('id', app.id);
+
+      if (updateError) throw updateError;
+      
+      toast.success("AI Audit Complete", { id: toastId });
+      fetchApplications();
+
+    } catch (err: any) {
+      toast.error(`Audit Failed: ${err.message}`, { id: toastId });
+    } finally {
+      setAuditingAppId(null);
+    }
+  };
 
   async function handleFinalApproval(appId: string) {
     if (!confirm('Are you sure you want to GRANT FINAL SANCTION for this application?')) return;
@@ -204,9 +247,18 @@ export default function TAODashboard() {
                     </div>
 
                     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                      <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                        <Zap size={18} className="text-amber-500"/> AI Audit Details
-                      </h4>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                          <Zap size={18} className="text-amber-500"/> AI Audit Details
+                        </h4>
+                        <button 
+                          onClick={() => handleRunAudit(app)}
+                          disabled={auditingAppId === app.id}
+                          className="px-3 py-1 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
+                        >
+                          {auditingAppId === app.id ? <Loader2 size={12} className="animate-spin" /> : "Run AI Audit"}
+                        </button>
+                      </div>
                       {aiResult ? (
                         <div className="space-y-4">
                           <div className={`p-4 rounded-xl border ${isClean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
@@ -228,9 +280,9 @@ export default function TAODashboard() {
                           )}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 pb-4">
+                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 pb-4">
                           <CheckCircle size={32} className="text-slate-300" />
-                          <span className="text-sm">No discrepancies found</span>
+                          <span className="text-sm">No audit results saved.</span>
                         </div>
                       )}
                     </div>
