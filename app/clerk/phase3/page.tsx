@@ -82,6 +82,7 @@ export default function Phase3QueuePage() {
           appId: app.id,
           quotationUrl: app.quotation_url,
           receiptUrl: app.receipt_url,
+          documentUrls: app.document_urls,
           farmerName: farmerName,
           subsidyReason: app.subsidy_reason || app.scheme_name
         }),

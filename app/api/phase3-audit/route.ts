@@ -5,10 +5,10 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { appId, quotationUrl, receiptUrl, farmerName, subsidyReason } = await req.json();
+    const { appId, quotationUrl, receiptUrl, farmerName, subsidyReason, documentUrls } = await req.json();
 
     if (!quotationUrl || !receiptUrl) {
-      return NextResponse.json({ success: false, error: "Missing documents" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Missing quotation or receipt documents" }, { status: 400 });
     }
 
     // Function to fetch and convert image to base64
@@ -29,12 +29,28 @@ export async function POST(req: Request) {
 
     const quotationPart = await fetchImage(quotationUrl);
     const receiptPart = await fetchImage(receiptUrl);
+    
+    const initialDocParts = [];
+    if (documentUrls && Array.isArray(documentUrls)) {
+      for (const url of documentUrls) {
+        try {
+          const part = await fetchImage(url);
+          initialDocParts.push(part);
+        } catch(e) {
+          console.error("Failed to fetch initial doc:", url);
+        }
+      }
+    }
 
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
-    Your task is to analyze the provided Quotation (first image) and Payment Receipt/Invoice (second image) for a farmer's subsidy application.
+    Your task is to analyze the provided documents for a farmer's subsidy application. 
+    You will receive several images:
+    - Any initial documents provided (Aadhaar, 7/12 land records, etc.)
+    - The Dealer Quotation (second to last image)
+    - The Payment Receipt/Invoice (last image)
 
     Farmer Details:
     - Name: ${farmerName}
@@ -42,13 +58,14 @@ export async function POST(req: Request) {
     - Location: Maharashtra
 
     Verification Rules:
-    1. Identity: The farmer's name on BOTH documents must match or be a close variation of "${farmerName}". Both documents must be issued to the same farmer.
+    1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ACROSS ALL DOCUMENTS (Aadhaar, 7/12, Quotation, and Receipt).
     2. GST Validation: The receipt/invoice MUST contain a valid Maharashtra GST Number starting with '27'.
     3. Technical Compliance: If applying for a Tractor, the HP must be below 45 HP.
     4. Currency: The currency must be INR. No foreign currency allowed.
     5. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
     6. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a drip irrigation quotation must not have a tractor receipt.
     7. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
+    8. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
 
     Extract the following details from the documents:
     - farmerNameOnDoc: The farmer/customer name found on the documents
@@ -76,6 +93,7 @@ export async function POST(req: Request) {
 
     const result = await model.generateContent([
       prompt,
+      ...initialDocParts,
       quotationPart,
       receiptPart
     ]);
