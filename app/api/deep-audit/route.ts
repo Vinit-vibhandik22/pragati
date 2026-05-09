@@ -74,7 +74,15 @@ export async function POST(req: Request) {
             const { data, error } = await supabase.storage.from(bucket).download(filePath);
             if (!error && data) {
               imageBuffers.push(Buffer.from(await data.arrayBuffer()));
-              docTypes.push(`Document ${i+1}`);
+              // Extract a human-readable name from the filename in the URL
+              const rawFileName = filePath.split('/').pop() || '';
+              // Filenames are typically: timestamp_uuid_DocumentType.ext
+              // Extract the part after the second underscore
+              const nameParts = rawFileName.split('_').slice(2).join('_').split('.')[0];
+              const readableName = nameParts.length > 2
+                ? nameParts.replace(/-/g, ' ').replace(/_/g, ' ')
+                : `Document ${i + 1}`;
+              docTypes.push(readableName || `Document ${i + 1}`);
               mimeTypes.push(data.type);
             }
           } catch (e) {
