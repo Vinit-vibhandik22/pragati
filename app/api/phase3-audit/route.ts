@@ -71,6 +71,15 @@ export async function POST(req: Request) {
        - If applying for "Old Well Repair" (Juni Vihir Durusti), "Pump Set", or "Micro Irrigation" (Drip/Sprinkler), the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
        - If applying for a "Tractor" or "Implements", no water source check is needed.
        - If the 7/12 fails the subsidy-specific water source rules, flag the application as REJECTED with "WATER_SOURCE_MISMATCH".
+     10. Jirayat/Bagayat Land Type Check (BAKSY Rules):
+        - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
+        - Rules based on subsidy type:
+          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
+          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
+          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
+          * "Drip Irrigation", "Sprinkler Irrigation": Either type acceptable, but a water source must be present.
+          * "Tractor", "Implements": Either land type acceptable. No restriction.
+        - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
 
     Extract the following details from the documents:
     - farmerNameOnDoc: The farmer/customer name found on the documents
@@ -82,15 +91,17 @@ export async function POST(req: Request) {
     - landHolding712: The land holding area found specifically in the 7/12 extract (e.g. "1.5 Ha")
     - landHolding8A: The total land holding area found specifically in the 8A ledger (e.g. "1.5 Ha")
     - cropType: The type of crop grown, if visible in the 7/12 extract (e.g. "Soybean, Cotton")
+    - landType712: "Jirayat" or "Bagayat" or "Mixed" as found in the 7/12 extract
     - waterSourceOn712: "Well Present" or "Borewell Present" or "No Water Source" as found in the 7/12 extract
     - waterSourceCheck: "PASS" or "FAIL" or "NOT_APPLICABLE" — based on Rule 9 above
+    - landTypeCheck: "PASS" or "FAIL" or "NOT_APPLICABLE" — based on Rule 10 above
     - casteDetected: The caste found in the Caste Certificate
     - aadhaarValid: "Yes" or "No"
 
     Respond ONLY with a JSON object (no markdown code blocks, no extra text, just raw JSON):
     {
       "verdict": "Verified" or "Rejected",
-      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH" or "INITIAL_DOCS_INVALID" or "WATER_SOURCE_MISMATCH",
+      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH" or "INITIAL_DOCS_INVALID" or "WATER_SOURCE_MISMATCH" or "LAND_TYPE_MISMATCH",
       "reason": "Detailed explanation of your findings",
       "extractedDetails": {
         "farmerNameOnDoc": "...",
@@ -102,8 +113,10 @@ export async function POST(req: Request) {
         "landHolding712": "...",
         "landHolding8A": "...",
         "cropType": "...",
+        "landType712": "...",
         "waterSourceOn712": "...",
         "waterSourceCheck": "...",
+        "landTypeCheck": "...",
         "casteDetected": "...",
         "aadhaarValid": "..."
       }
