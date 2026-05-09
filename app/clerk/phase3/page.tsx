@@ -107,10 +107,10 @@ export default function Phase3QueuePage() {
 
   const handleFinalApprove = async (appId: string) => {
     try {
-      // Clear the audit JSON from discrepancy_reason so it doesn't leak downstream
+      // Preserve the AI audit JSON in discrepancy_reason so TAO can see it
       const { error } = await supabase
         .from('farmer_applications')
-        .update({ status: 'Sent_to_TAO', discrepancy_reason: null })
+        .update({ status: 'Sent_to_TAO' })
         .eq('id', appId);
 
       if (error) throw error;

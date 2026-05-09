@@ -10,13 +10,18 @@ import {
   Clock, 
   BarChart3,
   Award,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function TAODashboard() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -31,7 +36,8 @@ export default function TAODashboard() {
       .eq('status', 'Sent_to_TAO');
 
     if (error) {
-      toast.error('Failed to fetch applications');
+      console.error(error);
+      toast.error('Failed to fetch applications: ' + error.message);
     } else {
       setApplications(data || []);
     }
@@ -102,53 +108,134 @@ export default function TAODashboard() {
             {applications.map(app => {
               const farmerNameMatch = app.farmer_id.match(/FARMER_(.*?)_\d{4}/);
               const farmerName = farmerNameMatch ? farmerNameMatch[1].replace(/_/g, ' ') : "Farmer";
+              const isExpanded = expandedAppId === app.id;
+              
+              let aiResult = null;
+              if (app.discrepancy_reason) {
+                try {
+                  aiResult = JSON.parse(app.discrepancy_reason);
+                } catch(e) {}
+              }
+              const isClean = !aiResult || aiResult.verdict === 'Verified';
               
               return (
-              <div key={app.id} className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/40 border border-white flex flex-col md:flex-row md:items-center justify-between gap-8 group hover:border-[#1B4332]/20 transition-all">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-xs font-black text-[#1B4332] bg-[#1B4332]/5 px-3 py-1 rounded-full border border-[#1B4332]/10">
-                      APP-{app.id.substring(0, 6).toUpperCase()}
-                    </span>
-                    <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                      <Clock size={12} /> {new Date(app.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  
-                  <h3 className="text-2xl font-black text-slate-900 mb-1">{farmerName}</h3>
-                  <p className="text-slate-500 font-medium mb-6">Scheme: {app.scheme_name} | Subsidy: {app.subsidy_reason}</p>
-                  
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-                      <Zap size={14} className="text-amber-500" />
-                      <span className="text-xs font-bold text-slate-700">AI: CLEAN</span>
+              <div key={app.id} className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/40 border border-white flex flex-col gap-6 group hover:border-[#1B4332]/20 transition-all">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-xs font-black text-[#1B4332] bg-[#1B4332]/5 px-3 py-1 rounded-full border border-[#1B4332]/10">
+                        APP-{app.id.substring(0, 6).toUpperCase()}
+                      </span>
+                      <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+                        <Clock size={12} /> {new Date(app.created_at).toLocaleDateString()}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-                      <CheckCircle size={14} className="text-emerald-500" />
-                      <span className="text-xs font-bold text-slate-700">Phase 3: Verified</span>
+                    
+                    <h3 className="text-2xl font-black text-slate-900 mb-1">{farmerName}</h3>
+                    <p className="text-slate-500 font-medium mb-6">Scheme: {app.scheme_name} | Subsidy: {app.subsidy_reason}</p>
+                    
+                    <div className="flex flex-wrap gap-3">
+                      <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${isClean ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                        {isClean ? <CheckCircle size={14} className="text-emerald-500" /> : <AlertTriangle size={14} className="text-red-500" />}
+                        <span className={`text-xs font-bold ${isClean ? 'text-emerald-700' : 'text-red-700'}`}>
+                          AI: {isClean ? 'CLEAN' : 'FLAGGED'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
+                        <CheckCircle size={14} className="text-emerald-500" />
+                        <span className="text-xs font-bold text-slate-700">Phase 3: Verified</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-4">
+                    <div className="text-right flex items-center gap-4">
+                      <button 
+                        onClick={() => setExpandedAppId(isExpanded ? null : app.id)}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-600 transition-colors"
+                      >
+                        {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </button>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                        <p className="text-2xl font-black text-[#1B4332]">Pending TAO</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-3 w-full md:w-auto mt-2">
+                      <button className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all">
+                        Query Application
+                      </button>
+                      <button 
+                        onClick={() => handleFinalApproval(app.id)}
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-sm bg-[#1B4332] text-white hover:bg-[#2D6A4F] shadow-2xl shadow-[#1B4332]/30 transition-all active:scale-95"
+                      >
+                        <Award size={20} />
+                        Grant Final Sanction
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-4">
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                    <p className="text-2xl font-black text-[#1B4332]">Pending TAO</p>
+                {isExpanded && (
+                  <div className="mt-4 pt-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-2 fade-in">
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                        <FileText size={18} className="text-slate-500"/> Submitted Documents
+                      </h4>
+                      <div className="space-y-3">
+                        {app.quotation_url ? (
+                          <a href={app.quotation_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
+                            <span className="text-sm font-bold text-slate-700">Dealer Quotation</span>
+                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW PDF</span>
+                          </a>
+                        ) : (
+                          <div className="p-4 bg-white rounded-xl border border-slate-200 text-slate-400 text-sm italic">No quotation uploaded</div>
+                        )}
+                        {app.receipt_url ? (
+                          <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
+                            <span className="text-sm font-bold text-slate-700">GST Payment Receipt</span>
+                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW PDF</span>
+                          </a>
+                        ) : (
+                          <div className="p-4 bg-white rounded-xl border border-slate-200 text-slate-400 text-sm italic">No receipt uploaded</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                        <Zap size={18} className="text-amber-500"/> AI Audit Details
+                      </h4>
+                      {aiResult ? (
+                        <div className="space-y-4">
+                          <div className={`p-4 rounded-xl border ${isClean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                            <p className="text-sm font-medium">{aiResult.reason}</p>
+                          </div>
+                          
+                          {aiResult.extractedDetails && (
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm">
+                              <h5 className="font-bold text-slate-600 mb-2 uppercase text-[10px] tracking-widest">Extracted Information</h5>
+                              <ul className="space-y-2">
+                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Name on Doc:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.farmerNameOnDoc || '-'}</span></li>
+                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">GST:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.gstNumber || '-'}</span></li>
+                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quotation Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.quotationItem || '-'}</span></li>
+                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Receipt Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.receiptItem || '-'}</span></li>
+                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quoted Price:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.quotedPrice || '-'}</span></li>
+                                <li className="flex justify-between"><span className="text-slate-500">Receipt Amount:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.receiptPrice || '-'}</span></li>
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 pb-4">
+                          <CheckCircle size={32} className="text-slate-300" />
+                          <span className="text-sm">No discrepancies found</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  
-                  <div className="flex gap-3 w-full md:w-auto">
-                    <button className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all">
-                      Query Application
-                    </button>
-                    <button 
-                      onClick={() => handleFinalApproval(app.id)}
-                      className="flex-1 md:flex-none flex items-center justify-center gap-2 px-10 py-4 rounded-2xl font-black text-sm bg-[#1B4332] text-white hover:bg-[#2D6A4F] shadow-2xl shadow-[#1B4332]/30 transition-all active:scale-95"
-                    >
-                      <Award size={20} />
-                      Grant Final Sanction
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
             )})}
           </div>
