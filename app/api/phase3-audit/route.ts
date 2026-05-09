@@ -157,14 +157,43 @@ export async function POST(req: Request) {
     }
     `;
 
-    const result = await model.generateContent([
-      prompt,
-      ...initialDocParts,
-      quotationPart,
-      receiptPart
-    ]);
+    const executeWithRetry = async (maxRetries = 3) => {
+      let attempt = 0;
+      let delay = 3000;
 
-    const responseText = result.response.text();
+      while (attempt < maxRetries) {
+        try {
+          // Timeout to prevent hanging
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Gemini service timeout (>40s)")), 40000)
+          );
+
+          const result = await Promise.race([
+            model.generateContent([
+              prompt,
+              ...initialDocParts,
+              quotationPart,
+              receiptPart
+            ]),
+            timeoutPromise
+          ]) as any;
+          return await result.response;
+        } catch (error: any) {
+          if (error.message?.includes('503') || error.message?.includes('timeout') || error.status === 503) {
+            attempt++;
+            if (attempt >= maxRetries) throw error;
+            console.warn(`[Phase 3 Audit] Attempt ${attempt} failed with 503/timeout. Retrying in ${delay}ms...`);
+            await new Promise(res => setTimeout(res, delay));
+            delay *= 2;
+          } else {
+            throw error;
+          }
+        }
+      }
+    };
+
+    const response = await executeWithRetry();
+    const responseText = response.text();
     let auditResult;
     try {
       const jsonStr = responseText.replace(/```json\n?|\n?```/g, '').trim();

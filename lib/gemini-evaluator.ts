@@ -156,17 +156,37 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
 
     console.log("[Gemini Evaluator] Sending documents to Gemini 1.5 Flash...");
 
-    // Set a 30s timeout manually
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Gemini service timeout (>30s)")), 30000)
-    );
+    // Set a 30s timeout manually for a single attempt
+    const executeWithRetry = async (maxRetries = 3) => {
+      let attempt = 0;
+      let delay = 3000;
 
-    const result = await Promise.race([
-      model.generateContent(promptParts as any),
-      timeoutPromise
-    ]) as any;
+      while (attempt < maxRetries) {
+        try {
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Gemini service timeout (>30s)")), 30000)
+          );
 
-    const response = await result.response;
+          const result = await Promise.race([
+            model.generateContent(promptParts as any),
+            timeoutPromise
+          ]) as any;
+          return await result.response;
+        } catch (error: any) {
+          if (error.message?.includes('503') || error.message?.includes('timeout') || error.status === 503) {
+            attempt++;
+            if (attempt >= maxRetries) throw error;
+            console.warn(`[Gemini Evaluator] Attempt ${attempt} failed with 503/timeout. Retrying in ${delay}ms...`);
+            await new Promise(res => setTimeout(res, delay));
+            delay *= 2; // exponential backoff
+          } else {
+            throw error; // Other errors fail immediately
+          }
+        }
+      }
+    };
+
+    const response = await executeWithRetry();
     const text = response.text();
 
     // Clean markdown code blocks if present
