@@ -70,11 +70,11 @@ export default function FarmerPortal() {
 
         <div className="hidden md:flex items-center gap-6">
           <button 
-            onClick={() => setLanguage(language === "English" ? "Marathi" : "English")}
+            onClick={() => setLanguage(language === "en" ? "mr" : "en")}
             className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-[#1B4332] transition-colors"
           >
             <Globe className="h-4 w-4" />
-            {language === "English" ? "मराठी" : "English"}
+            {language === "en" ? "मराठी" : "English"}
           </button>
           <div className="flex items-center gap-2 bg-[#f2f4f6] px-3 py-1 rounded-full">
             <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -84,11 +84,11 @@ export default function FarmerPortal() {
 
         <div className="flex md:hidden items-center gap-2">
           <button 
-            onClick={() => setLanguage(language === "English" ? "Marathi" : "English")}
+            onClick={() => setLanguage(language === "en" ? "mr" : "en")}
             className="flex items-center gap-2 text-xs font-medium text-gray-600"
           >
             <Globe className="h-4 w-4" />
-            {language === "English" ? "मराठी" : "English"}
+            {language === "en" ? "मराठी" : "English"}
           </button>
         </div>
       </header>

@@ -22,7 +22,7 @@ export default function Phase3QueuePage() {
   const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
   
   const { language } = useLanguage();
-  const lang = language === "English" ? "EN" : "MR";
+  const lang = language === "en" ? "EN" : "MR";
   const supabase = createClient();
 
   useEffect(() => {
