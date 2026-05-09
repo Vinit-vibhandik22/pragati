@@ -275,6 +275,13 @@ export default function Phase3QueuePage() {
                                   <li><span className="font-semibold text-slate-500">Receipt Item:</span> {aiResult.extractedDetails.receiptItem}</li>
                                   <li><span className="font-semibold text-slate-500">Quoted Price:</span> {aiResult.extractedDetails.quotedPrice}</li>
                                   <li><span className="font-semibold text-slate-500">Receipt Amount:</span> {aiResult.extractedDetails.receiptPrice}</li>
+                                  <li><span className="font-semibold text-slate-500">7/12 Land:</span> {aiResult.extractedDetails.landHolding712}</li>
+                                  <li><span className="font-semibold text-slate-500">8A Land:</span> {aiResult.extractedDetails.landHolding8A}</li>
+                                  <li><span className="font-semibold text-slate-500">Crop Type (7/12):</span> {aiResult.extractedDetails.cropType}</li>
+                                  <li><span className="font-semibold text-slate-500">Water Source (7/12):</span> {aiResult.extractedDetails.waterSourceOn712}</li>
+                                  <li><span className="font-semibold text-slate-500">Water Source Check:</span> <span className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${aiResult.extractedDetails.waterSourceCheck === 'PASS' ? 'bg-emerald-100 text-emerald-700' : aiResult.extractedDetails.waterSourceCheck === 'FAIL' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{aiResult.extractedDetails.waterSourceCheck || '-'}</span></li>
+                                  <li><span className="font-semibold text-slate-500">Caste:</span> {aiResult.extractedDetails.casteDetected}</li>
+                                  <li><span className="font-semibold text-slate-500">Aadhaar:</span> {aiResult.extractedDetails.aadhaarValid}</li>
                                 </ul>
                               </div>
                             )}

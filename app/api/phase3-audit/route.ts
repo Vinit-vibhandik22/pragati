@@ -66,6 +66,11 @@ export async function POST(req: Request) {
     6. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a drip irrigation quotation must not have a tractor receipt.
     7. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
     8. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
+    9. Subsidy-Specific Land Record Checks (BAKSY Rules):
+       - If applying for a "New Well" (Navin Vihir), the 7/12 extract MUST NOT show any existing well.
+       - If applying for "Old Well Repair" (Juni Vihir Durusti), "Pump Set", or "Micro Irrigation" (Drip/Sprinkler), the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
+       - If applying for a "Tractor" or "Implements", no water source check is needed.
+       - If the 7/12 fails the subsidy-specific water source rules, flag the application as REJECTED with "WATER_SOURCE_MISMATCH".
 
     Extract the following details from the documents:
     - farmerNameOnDoc: The farmer/customer name found on the documents
@@ -74,11 +79,18 @@ export async function POST(req: Request) {
     - receiptItem: The main item/equipment described in the Receipt
     - quotedPrice: The total price shown on the Quotation (numeric value)
     - receiptPrice: The total amount shown on the Receipt (numeric value)
+    - landHolding712: The land holding area found specifically in the 7/12 extract (e.g. "1.5 Ha")
+    - landHolding8A: The total land holding area found specifically in the 8A ledger (e.g. "1.5 Ha")
+    - cropType: The type of crop grown, if visible in the 7/12 extract (e.g. "Soybean, Cotton")
+    - waterSourceOn712: "Well Present" or "Borewell Present" or "No Water Source" as found in the 7/12 extract
+    - waterSourceCheck: "PASS" or "FAIL" or "NOT_APPLICABLE" — based on Rule 9 above
+    - casteDetected: The caste found in the Caste Certificate
+    - aadhaarValid: "Yes" or "No"
 
     Respond ONLY with a JSON object (no markdown code blocks, no extra text, just raw JSON):
     {
       "verdict": "Verified" or "Rejected",
-      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH",
+      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH" or "INITIAL_DOCS_INVALID" or "WATER_SOURCE_MISMATCH",
       "reason": "Detailed explanation of your findings",
       "extractedDetails": {
         "farmerNameOnDoc": "...",
@@ -86,7 +98,14 @@ export async function POST(req: Request) {
         "quotationItem": "...",
         "receiptItem": "...",
         "quotedPrice": "...",
-        "receiptPrice": "..."
+        "receiptPrice": "...",
+        "landHolding712": "...",
+        "landHolding8A": "...",
+        "cropType": "...",
+        "waterSourceOn712": "...",
+        "waterSourceCheck": "...",
+        "casteDetected": "...",
+        "aadhaarValid": "..."
       }
     }
     `;
