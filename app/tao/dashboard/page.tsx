@@ -122,17 +122,6 @@ export default function TAODashboard() {
             </h1>
           </div>
           
-          <div className="flex gap-4">
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-              <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                <DollarSign size={20} />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Taluka Budget Left</p>
-                <p className="text-lg font-black text-slate-900">₹42.50 L</p>
-              </div>
-            </div>
-          </div>
         </header>
 
         {loading ? (
@@ -316,38 +305,6 @@ export default function TAODashboard() {
                           <div className="flex flex-col items-center justify-center py-4 text-slate-400 gap-3">
                             <CheckCircle size={32} className="text-slate-300" />
                             <span className="text-sm">No Phase 3 audit results saved.</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                        <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                          <Zap size={18} className="text-blue-500"/> Phase 1 AI Audit (Initial Docs)
-                        </h4>
-                        {phase1AiResult ? (
-                          <div className="space-y-4">
-                            <div className={`p-4 rounded-xl border ${isPhase1Clean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                              <p className="text-sm font-medium">Overall Verdict: {phase1AiResult.overall_verdict}</p>
-                            </div>
-                            
-                            {phase1AiResult.document_evaluations && phase1AiResult.document_evaluations.length > 0 && (
-                              <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm space-y-3">
-                                {phase1AiResult.document_evaluations.map((doc: any, i: number) => (
-                                  <div key={i} className="border-b border-slate-50 pb-3 last:border-0 last:pb-0">
-                                    <h5 className="font-bold text-slate-700 capitalize flex items-center justify-between">
-                                      {doc.document_name}
-                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${doc.status === 'Safe' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{doc.status}</span>
-                                    </h5>
-                                    <p className="text-xs text-slate-500 mt-1">{doc.clerk_explanation}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-4 text-slate-400 gap-3">
-                            <CheckCircle size={32} className="text-slate-300" />
-                            <span className="text-sm">No Phase 1 audit results saved.</span>
                           </div>
                         )}
                       </div>
