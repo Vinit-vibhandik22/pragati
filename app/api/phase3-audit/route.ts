@@ -44,11 +44,35 @@ export async function POST(req: Request) {
 
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
-    // Determine if water/land type checks are relevant for this subsidy
-    const isTractorOrImplements = /tractor|implement|rotavator|cultivator/i.test(subsidyReason || '');
-    const landWaterCheckNote = isTractorOrImplements
-      ? `NOTE: This is a Tractor/Implements subsidy. Rules 9 and 10 (water source check and land type check) are NOT APPLICABLE. Set waterSourceCheck and landTypeCheck to "NOT_APPLICABLE". Do not penalise the application for land type or water source.`
-      : `Apply Rules 9 and 10 strictly.`;
+    // Per-subsidy rule matrix for BAKSY scheme
+    const s = (subsidyReason || '').toLowerCase();
+
+    // Rule 9: Water source check — does the subsidy care about water source?
+    const needsWaterSourceCheck =
+      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity|drip|sprinkler/i.test(s);
+    // Rule 9 specifics: for new well, water must NOT exist. For others, water MUST exist.
+    const waterSourceMustBeAbsent = /new well|navin vihir/i.test(s);
+
+    // Rule 10: Land type check — does the subsidy care about Jirayat vs Bagayat?
+    const needsLandTypeCheck =
+      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity|farm pond/i.test(s);
+    // Rule 10 specifics: which land type is required?
+    const requiredLandType = (() => {
+      if (/new well|navin vihir|farm pond/i.test(s)) return 'Jirayat';
+      if (/old well|juni vihir|boring|pump set|electricity/i.test(s)) return 'Bagayat';
+      return null; // no restriction
+    })();
+
+    // Build instruction note to inject into prompt
+    const waterSourceNote = !needsWaterSourceCheck
+      ? `Rule 9 (Water Source Check) is NOT APPLICABLE for this subsidy. Set waterSourceCheck to "NOT_APPLICABLE". Do not show or penalise for water source.`
+      : waterSourceMustBeAbsent
+        ? `Rule 9: For a "New Well" subsidy, the 7/12 MUST NOT show an existing well. If a well exists, set waterSourceCheck to "FAIL" and reject.`
+        : `Rule 9: This subsidy requires an existing water source. If no water source is shown in 7/12, set waterSourceCheck to "FAIL" and reject.`;
+
+    const landTypeNote = !needsLandTypeCheck
+      ? `Rule 10 (Land Type Check) is NOT APPLICABLE for this subsidy. Set landTypeCheck to "NOT_APPLICABLE". Do not show or penalise for Jirayat/Bagayat.`
+      : `Rule 10: For this subsidy, land MUST be ${requiredLandType}. If the 7/12 shows a different land type, set landTypeCheck to "FAIL" and flag as LAND_TYPE_MISMATCH.`;
 
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
@@ -87,7 +111,9 @@ export async function POST(req: Request) {
           * "Tractor", "Implements": Either land type acceptable. No restriction.
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
 
-    ${landWaterCheckNote}
+    APPLICABILITY FOR THIS APPLICATION:
+    ${waterSourceNote}
+    ${landTypeNote}
 
     Extract the following details from the documents:
     - farmerNameOnDoc: The farmer/customer name found on the documents
