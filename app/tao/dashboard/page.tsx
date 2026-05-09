@@ -227,10 +227,23 @@ export default function TAODashboard() {
                         <FileText size={18} className="text-slate-500"/> Submitted Documents
                       </h4>
                       <div className="space-y-3">
+                        {app.document_urls && app.document_urls.length > 0 && app.document_urls.map((url: string, index: number) => {
+                          // Try to extract a readable name, e.g., 'Aadhaar' or '7-12' from the URL, otherwise use a fallback
+                          const fileNameRaw = url.split('/').pop() || '';
+                          const cleanName = fileNameRaw.includes('_') ? fileNameRaw.split('_').slice(2).join('_').split('.')[0] : `Initial Document ${index + 1}`;
+                          const displayTitle = cleanName.length > 2 ? cleanName.replace(/-/g, ' ') : `Initial Document ${index + 1}`;
+
+                          return (
+                            <a key={index} href={url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
+                              <span className="text-sm font-bold text-slate-700 capitalize">{displayTitle}</span>
+                              <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW</span>
+                            </a>
+                          );
+                        })}
                         {app.quotation_url ? (
                           <a href={app.quotation_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
                             <span className="text-sm font-bold text-slate-700">Dealer Quotation</span>
-                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW PDF</span>
+                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW</span>
                           </a>
                         ) : (
                           <div className="p-4 bg-white rounded-xl border border-slate-200 text-slate-400 text-sm italic">No quotation uploaded</div>
@@ -238,7 +251,7 @@ export default function TAODashboard() {
                         {app.receipt_url ? (
                           <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
                             <span className="text-sm font-bold text-slate-700">GST Payment Receipt</span>
-                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW PDF</span>
+                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW</span>
                           </a>
                         ) : (
                           <div className="p-4 bg-white rounded-xl border border-slate-200 text-slate-400 text-sm italic">No receipt uploaded</div>
