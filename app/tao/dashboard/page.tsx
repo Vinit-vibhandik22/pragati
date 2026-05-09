@@ -160,6 +160,15 @@ export default function TAODashboard() {
                 } catch(e) {}
               }
               const isClean = !aiResult || aiResult.verdict === 'Verified';
+
+              let phase1AiResult = null;
+              if (app.extracted_text) {
+                try {
+                  phase1AiResult = JSON.parse(app.extracted_text);
+                } catch(e) {}
+              }
+              const isPhase1Clean = !phase1AiResult || phase1AiResult.overall_verdict === 'Safe' || phase1AiResult.overall_verdict === 'Verified_by_AI';
+
               
               return (
               <div key={app.id} className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/40 border border-white flex flex-col gap-6 group hover:border-[#1B4332]/20 transition-all">
@@ -259,45 +268,79 @@ export default function TAODashboard() {
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                          <Zap size={18} className="text-amber-500"/> AI Audit Details
-                        </h4>
-                        <button 
-                          onClick={() => handleRunAudit(app)}
-                          disabled={auditingAppId === app.id}
-                          className="px-3 py-1 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
-                        >
-                          {auditingAppId === app.id ? <Loader2 size={12} className="animate-spin" /> : "Run AI Audit"}
-                        </button>
-                      </div>
-                      {aiResult ? (
-                        <div className="space-y-4">
-                          <div className={`p-4 rounded-xl border ${isClean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                            <p className="text-sm font-medium">{aiResult.reason}</p>
-                          </div>
-                          
-                          {aiResult.extractedDetails && (
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm">
-                              <h5 className="font-bold text-slate-600 mb-2 uppercase text-[10px] tracking-widest">Extracted Information</h5>
-                              <ul className="space-y-2">
-                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Name on Doc:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.farmerNameOnDoc || '-'}</span></li>
-                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">GST:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.gstNumber || '-'}</span></li>
-                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quotation Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.quotationItem || '-'}</span></li>
-                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Receipt Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.receiptItem || '-'}</span></li>
-                                <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quoted Price:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.quotedPrice || '-'}</span></li>
-                                <li className="flex justify-between"><span className="text-slate-500">Receipt Amount:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.receiptPrice || '-'}</span></li>
-                              </ul>
+                    <div className="flex flex-col gap-6">
+                      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                            <Zap size={18} className="text-amber-500"/> Phase 3 AI Audit Details
+                          </h4>
+                          <button 
+                            onClick={() => handleRunAudit(app)}
+                            disabled={auditingAppId === app.id}
+                            className="px-3 py-1 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
+                          >
+                            {auditingAppId === app.id ? <Loader2 size={12} className="animate-spin" /> : "Run AI Audit"}
+                          </button>
+                        </div>
+                        {aiResult ? (
+                          <div className="space-y-4">
+                            <div className={`p-4 rounded-xl border ${isClean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                              <p className="text-sm font-medium">{aiResult.reason}</p>
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 pb-4">
-                          <CheckCircle size={32} className="text-slate-300" />
-                          <span className="text-sm">No audit results saved.</span>
-                        </div>
-                      )}
+                            
+                            {aiResult.extractedDetails && (
+                              <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm">
+                                <h5 className="font-bold text-slate-600 mb-2 uppercase text-[10px] tracking-widest">Extracted Information</h5>
+                                <ul className="space-y-2">
+                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Name on Doc:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.farmerNameOnDoc || '-'}</span></li>
+                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">GST:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.gstNumber || '-'}</span></li>
+                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quotation Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.quotationItem || '-'}</span></li>
+                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Receipt Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.receiptItem || '-'}</span></li>
+                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quoted Price:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.quotedPrice || '-'}</span></li>
+                                  <li className="flex justify-between"><span className="text-slate-500">Receipt Amount:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.receiptPrice || '-'}</span></li>
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-4 text-slate-400 gap-3">
+                            <CheckCircle size={32} className="text-slate-300" />
+                            <span className="text-sm">No Phase 3 audit results saved.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                          <Zap size={18} className="text-blue-500"/> Phase 1 AI Audit (Initial Docs)
+                        </h4>
+                        {phase1AiResult ? (
+                          <div className="space-y-4">
+                            <div className={`p-4 rounded-xl border ${isPhase1Clean ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                              <p className="text-sm font-medium">Overall Verdict: {phase1AiResult.overall_verdict}</p>
+                            </div>
+                            
+                            {phase1AiResult.document_evaluations && phase1AiResult.document_evaluations.length > 0 && (
+                              <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm space-y-3">
+                                {phase1AiResult.document_evaluations.map((doc: any, i: number) => (
+                                  <div key={i} className="border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                                    <h5 className="font-bold text-slate-700 capitalize flex items-center justify-between">
+                                      {doc.document_name}
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${doc.status === 'Safe' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{doc.status}</span>
+                                    </h5>
+                                    <p className="text-xs text-slate-500 mt-1">{doc.clerk_explanation}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-4 text-slate-400 gap-3">
+                            <CheckCircle size={32} className="text-slate-300" />
+                            <span className="text-sm">No Phase 1 audit results saved.</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
