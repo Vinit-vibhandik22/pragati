@@ -22,7 +22,9 @@ import {
 import { toast } from 'sonner';
 
 export default function TAODashboard() {
-  const [applications, setApplications] = useState<any[]>([]);
+  const [pendingApps, setPendingApps] = useState<any[]>([]);
+  const [sanctionedApps, setSanctionedApps] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'pending' | 'sanctioned'>('pending');
   const [loading, setLoading] = useState(true);
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
   const [auditingAppId, setAuditingAppId] = useState<string | null>(null);
@@ -37,13 +39,14 @@ export default function TAODashboard() {
     const { data, error } = await supabase
       .from('farmer_applications')
       .select('*')
-      .eq('status', 'Sent_to_TAO');
+      .in('status', ['Sent_to_TAO', 'Approved']);
 
     if (error) {
       console.error(error);
       toast.error('Failed to fetch applications: ' + error.message);
     } else {
-      setApplications(data || []);
+      setPendingApps((data || []).filter(a => a.status === 'Sent_to_TAO'));
+      setSanctionedApps((data || []).filter(a => a.status === 'Approved'));
     }
     setLoading(false);
   }
@@ -216,21 +219,36 @@ export default function TAODashboard() {
           
         </header>
 
+        <div className="flex gap-4 mb-8">
+          <button 
+            onClick={() => setActiveTab('pending')} 
+            className={`px-6 py-3 rounded-xl font-bold transition-all ${activeTab === 'pending' ? 'bg-[#1B4332] text-white shadow-lg shadow-[#1B4332]/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          >
+            Pending Pre-Sanction ({pendingApps.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('sanctioned')} 
+            className={`px-6 py-3 rounded-xl font-bold transition-all ${activeTab === 'sanctioned' ? 'bg-[#1B4332] text-white shadow-lg shadow-[#1B4332]/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          >
+            Sanctioned / Waiting for Funds ({sanctionedApps.length})
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex justify-center p-12">
             <div className="h-10 w-10 border-4 border-[#1B4332] border-t-transparent rounded-full animate-spin"></div>
           </div>
-        ) : applications.length === 0 ? (
+        ) : (activeTab === 'pending' ? pendingApps : sanctionedApps).length === 0 ? (
           <div className="bg-white rounded-[2rem] p-16 text-center border border-slate-200 shadow-xl shadow-slate-200/50">
             <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="text-emerald-500" size={40} />
             </div>
-            <h3 className="text-2xl font-black text-slate-900">Workspace Optimized</h3>
-            <p className="text-slate-500 font-medium">No pending pre-sanctions. All applications have been processed.</p>
+            <h3 className="text-2xl font-black text-slate-900">{activeTab === 'pending' ? 'Workspace Optimized' : 'No Sanctioned Apps'}</h3>
+            <p className="text-slate-500 font-medium">{activeTab === 'pending' ? 'No pending pre-sanctions. All applications have been processed.' : 'No applications have been sanctioned yet.'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6">
-            {applications.map(app => {
+            {(activeTab === 'pending' ? pendingApps : sanctionedApps).map(app => {
               const farmerNameMatch = app.farmer_id.match(/FARMER_(.*?)_\d{4}/);
               const farmerName = farmerNameMatch ? farmerNameMatch[1].replace(/_/g, ' ') : "Farmer";
               const isExpanded = expandedAppId === app.id;
@@ -312,25 +330,29 @@ export default function TAODashboard() {
                       </button>
                       <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                        <p className="text-2xl font-black text-[#1B4332]">Pending TAO</p>
+                        <p className={`text-2xl font-black ${activeTab === 'sanctioned' ? 'text-blue-600' : 'text-[#1B4332]'}`}>
+                          {activeTab === 'sanctioned' ? 'Sanctioned' : 'Pending TAO'}
+                        </p>
                       </div>
                     </div>
                     
-                    <div className="flex gap-3 w-full md:w-auto mt-2">
-                      <button 
-                        onClick={() => handleReject(app)}
-                        className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
-                      >
-                        Reject Application
-                      </button>
-                      <button 
-                        onClick={() => handleFinalApproval(app)}
-                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-sm bg-[#1B4332] text-white hover:bg-[#2D6A4F] shadow-2xl shadow-[#1B4332]/30 transition-all active:scale-95"
-                      >
-                        <Award size={20} />
-                        Grant Final Sanction
-                      </button>
-                    </div>
+                    {activeTab === 'pending' && (
+                      <div className="flex gap-3 w-full md:w-auto mt-2">
+                        <button 
+                          onClick={() => handleReject(app)}
+                          className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
+                        >
+                          Reject Application
+                        </button>
+                        <button 
+                          onClick={() => handleFinalApproval(app)}
+                          className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-sm bg-[#1B4332] text-white hover:bg-[#2D6A4F] shadow-2xl shadow-[#1B4332]/30 transition-all active:scale-95"
+                        >
+                          <Award size={20} />
+                          Grant Final Sanction
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
