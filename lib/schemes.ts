@@ -46,7 +46,7 @@ export const SCHEMES: Scheme[] = [
     eligibility: {
       irrigationTypes: ['rainfed', 'well', 'canal']
     },
-    requiredDocs: ['Aadhaar', 'Land Record (7/12)', 'Quotation for equipment'],
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)'],
     department: 'Subsidy Department'
   },
   {

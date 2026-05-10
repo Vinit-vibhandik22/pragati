@@ -120,7 +120,7 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
   "reason": "Overall reason",
   "document_evaluations": [
     {
-      "detected_document_type": "Aadhaar Card" | "7/12 Extract" | "8A Holding" | "Caste Certificate" | "Bank Passbook Copy" | "Income Certificate" | "Quotation" | "Receipt" | "Unknown",
+      "detected_document_type": "Aadhaar Card" | "7/12 Extract" | "8A Holding" | "Caste Certificate" | "Bank Passbook Copy" | "Income Certificate" | "Receipt" | "Unknown",
       "status": "Verified" | "Rejected" | "Manual_Review_Required",
       "reason": "Specific reason for this exact document"
     }

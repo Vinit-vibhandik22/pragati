@@ -58,7 +58,6 @@ export default function TAODashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           appId: app.id,
-          quotationUrl: app.quotation_url,
           receiptUrl: app.receipt_url,
           documentUrls: app.document_urls,
           farmerName: farmerName,
@@ -239,14 +238,6 @@ export default function TAODashboard() {
                             </a>
                           );
                         })}
-                        {app.quotation_url ? (
-                          <a href={app.quotation_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
-                            <span className="text-sm font-bold text-slate-700">Dealer Quotation</span>
-                            <span className="text-xs font-black text-blue-600 group-hover/link:underline">VIEW</span>
-                          </a>
-                        ) : (
-                          <div className="p-4 bg-white rounded-xl border border-slate-200 text-slate-400 text-sm italic">No quotation uploaded</div>
-                        )}
                         {app.receipt_url ? (
                           <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-colors group/link">
                             <span className="text-sm font-bold text-slate-700">GST Payment Receipt</span>
@@ -284,9 +275,7 @@ export default function TAODashboard() {
                                 <ul className="space-y-2">
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Name on Doc:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.farmerNameOnDoc || '-'}</span></li>
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">GST:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.gstNumber || '-'}</span></li>
-                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quotation Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.quotationItem || '-'}</span></li>
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Receipt Item:</span> <span className="font-medium text-slate-800 text-right max-w-[150px] truncate">{aiResult.extractedDetails.receiptItem || '-'}</span></li>
-                                  <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Quoted Price:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.quotedPrice || '-'}</span></li>
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Receipt Amount:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.receiptPrice || '-'}</span></li>
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">7/12 Land:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.landHolding712 || '-'}</span></li>
                                   <li className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">8A Land:</span> <span className="font-medium text-slate-800">{aiResult.extractedDetails.landHolding8A || '-'}</span></li>

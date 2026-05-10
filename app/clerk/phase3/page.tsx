@@ -26,14 +26,9 @@ export default function Phase3QueuePage() {
   const calculateSubsidy = (app: any, aiResult: any) => {
     if (!aiResult || !aiResult.extractedDetails) return;
     
-    const qPriceRaw = aiResult.extractedDetails.quotedPrice || "0";
     const rPriceRaw = aiResult.extractedDetails.receiptPrice || "0";
-    
-    const qPrice = parseFloat(qPriceRaw.toString().replace(/[^0-9.]/g, "")) || 0;
     const rPrice = parseFloat(rPriceRaw.toString().replace(/[^0-9.]/g, "")) || 0;
-    
-    // Fallback: If one is 0, use the other. If both exist, use the minimum.
-    const actualCost = Math.min(qPrice, rPrice) > 0 ? Math.min(qPrice, rPrice) : Math.max(qPrice, rPrice);
+    const actualCost = rPrice;
     let subsidyAmount = 0;
     
     const reason = (app.subsidy_reason || app.scheme_name || "").toLowerCase();
@@ -117,7 +112,6 @@ export default function Phase3QueuePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           appId: app.id,
-          quotationUrl: app.quotation_url,
           receiptUrl: app.receipt_url,
           documentUrls: app.document_urls,
           farmerName: farmerName,
@@ -206,8 +200,8 @@ export default function Phase3QueuePage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Phase 3 Audits (Quotations & Receipts)</h1>
-          <p className="text-slate-500">Review final documents before sending to TAO for disbursement.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Phase 3 Audits (Payment Receipts)</h1>
+          <p className="text-slate-500">Review GST payment receipts before sending to TAO for disbursement.</p>
         </div>
         <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-bold border border-emerald-200">
           {applications.length} Pending Reviews
@@ -261,16 +255,16 @@ export default function Phase3QueuePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                    <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><FileSpreadsheet size={16}/> Documents</h4>
+                    <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Receipt size={16}/> Documents</h4>
                     <div className="space-y-2">
-                      <a href={app.quotation_url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-white p-3 rounded border border-slate-200 hover:border-blue-300 transition-colors">
-                        <span className="text-sm font-medium text-slate-700">Dealer Quotation</span>
-                        <span className="text-xs text-blue-600 font-bold">View</span>
-                      </a>
-                      <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-white p-3 rounded border border-slate-200 hover:border-blue-300 transition-colors">
-                        <span className="text-sm font-medium text-slate-700">GST Payment Receipt</span>
-                        <span className="text-xs text-blue-600 font-bold">View</span>
-                      </a>
+                      {app.receipt_url ? (
+                        <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-white p-3 rounded border border-slate-200 hover:border-blue-300 transition-colors">
+                          <span className="text-sm font-medium text-slate-700">GST Payment Receipt</span>
+                          <span className="text-xs text-blue-600 font-bold">View</span>
+                        </a>
+                      ) : (
+                        <div className="p-3 bg-white rounded border border-slate-200 text-slate-400 text-sm italic">No receipt uploaded</div>
+                      )}
                     </div>
                   </div>
 
@@ -308,9 +302,7 @@ export default function Phase3QueuePage() {
                                 <ul className="space-y-1">
                                   <li><span className="font-semibold text-slate-500">Name:</span> {aiResult.extractedDetails.farmerNameOnDoc}</li>
                                   <li><span className="font-semibold text-slate-500">GST:</span> {aiResult.extractedDetails.gstNumber}</li>
-                                  <li><span className="font-semibold text-slate-500">Quotation Item:</span> {aiResult.extractedDetails.quotationItem}</li>
                                   <li><span className="font-semibold text-slate-500">Receipt Item:</span> {aiResult.extractedDetails.receiptItem}</li>
-                                  <li><span className="font-semibold text-slate-500">Quoted Price:</span> {aiResult.extractedDetails.quotedPrice}</li>
                                   <li><span className="font-semibold text-slate-500">Receipt Amount:</span> {aiResult.extractedDetails.receiptPrice}</li>
                                   <li><span className="font-semibold text-slate-500">7/12 Land:</span> {aiResult.extractedDetails.landHolding712}</li>
                                   <li><span className="font-semibold text-slate-500">8A Land:</span> {aiResult.extractedDetails.landHolding8A}</li>

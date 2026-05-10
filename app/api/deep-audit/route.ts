@@ -76,7 +76,7 @@ export async function POST(req: Request) {
               imageBuffers.push(Buffer.from(await data.arrayBuffer()));
               // Extract a human-readable name from the filename in the URL
               const decodedPath = decodeURIComponent(filePath).replace(/_/g, ' ');
-              const knownTypes = ['7/12 Extract', '8A Holding', 'Aadhaar Card', 'Caste Certificate', 'Bank Passbook Copy', 'Income Certificate', 'Quotation', 'Receipt'];
+              const knownTypes = ['7/12 Extract', '8A Holding', 'Aadhaar Card', 'Caste Certificate', 'Bank Passbook Copy', 'Income Certificate', 'Receipt'];
               
               let readableName = `Document ${i + 1}`;
               for (const kt of knownTypes) {

@@ -37,11 +37,11 @@ function getFriendlyReason(rawReason: string | null): string | null {
         case "PARSE_ERROR":
           return "We could not read the document. Please upload a clearer copy.";
         case "EQUIPMENT_MISMATCH":
-          return "The item in your quotation does not match the subsidy you applied for. Please upload the correct quotation.";
+          return "The item on your receipt does not match the subsidy you applied for. Please upload the correct receipt.";
         case "ITEM_MISMATCH":
-          return "The item on the quotation and receipt do not match. Both should be for the same product.";
+          return "The item on the receipt does not match the approved subsidy. Please upload the correct receipt.";
         case "PRICE_MISMATCH":
-          return "The price on the quotation and the receipt are different. Please check and re‑upload matching documents.";
+          return "The price on the receipt appears incorrect. Please re‑upload the correct receipt.";
         case "CLERK_REJECTED":
           return "Your application was reviewed and rejected by the Clerk. Please contact your local office for details.";
         default:
@@ -70,7 +70,6 @@ interface Application {
   status: string;
   created_at: string;
   document_urls: string[];
-  quotation_url?: string;
   receipt_url?: string;
   subsidy_reason?: string;
   discrepancy_reason?: string;
@@ -141,23 +140,21 @@ export default function ApplicationHistoryPage() {
 
       const publicUrl = publicUrlData.publicUrl;
 
-      // Update the database with the new URL
-      const columnToUpdate = docType === 'Quotation' ? 'quotation_url' : 'receipt_url';
-      
+      // Update the database with the receipt URL
       const { data: updatedApp, error: updateError } = await supabase
         .from('farmer_applications')
-        .update({ [columnToUpdate]: publicUrl })
+        .update({ receipt_url: publicUrl })
         .eq('id', appId)
         .select()
         .single();
 
       if (updateError) throw updateError;
 
-      if (updatedApp.quotation_url && updatedApp.receipt_url && (updatedApp.status === 'Verified_by_Clerk' || updatedApp.status === 'Approved')) {
+      if (updatedApp.receipt_url && (updatedApp.status === 'Verified_by_Clerk' || updatedApp.status === 'Approved')) {
         await supabase.from('farmer_applications').update({ status: 'Pending_Phase_3' }).eq('id', appId);
-        toast.success(lang === "EN" ? "Both documents submitted for Phase 3 Audit!" : "दोन्ही कागदपत्रे टप्पा 3 ऑडिटसाठी सबमिट केली!");
+        toast.success(lang === "EN" ? "Receipt submitted for Phase 3 Audit!" : "पावती टप्पा 3 ऑडिटसाठी सबमिट केली!");
       } else {
-        toast.success(`${docType} uploaded successfully!`);
+        toast.success(lang === "EN" ? "Receipt uploaded successfully!" : "पावती यशस्वीरित्या अपलोड झाली!");
       }
       
       fetchApplications();
@@ -253,65 +250,39 @@ export default function ApplicationHistoryPage() {
               {(app.status === 'Verified_by_Clerk' || app.status === 'Approved') && (
                 <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 mt-2">
                   <h4 className="font-bold text-blue-900 text-sm mb-3">
-                    {lang === "EN" ? "Action Required: Upload Quotation & Payment Receipt" : "कृती आवश्यक: कोटेशन आणि पेमेंट पावती अपलोड करा"}
+                    {lang === "EN" ? "Action Required: Upload Payment Receipt" : "कृती आवश्यक: पेमेंट पावती अपलोड करा"}
                   </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Quotation Upload */}
-                    <div className="bg-white border border-blue-100 p-4 rounded-lg shadow-sm flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-blue-100 p-2 rounded-lg text-blue-700">
-                          <FileSpreadsheet size={20} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-800">{lang === "EN" ? "Dealer Quotation" : "डीलर कोटेशन"}</p>
-                          <p className="text-[10px] text-gray-500">{lang === "EN" ? "PDF or Image" : "PDF किंवा इमेज"}</p>
-                        </div>
+                  <p className="text-xs text-blue-700 mb-4">
+                    {lang === "EN"
+                      ? "Please upload your GST payment receipt to proceed to Phase 3 audit."
+                      : "टप्पा 3 ऑडिटसाठी पुढे जाण्यासाठी कृपया तुमची GST पेमेंट पावती अपलोड करा."}
+                  </p>
+                  {/* Receipt Upload */}
+                  <div className="bg-white border border-blue-100 p-4 rounded-lg shadow-sm flex items-center justify-between max-w-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-blue-100 p-2 rounded-lg text-blue-700">
+                        <Receipt size={20} />
                       </div>
                       <div>
-                        <input 
-                          type="file" 
-                          id={`quotation-${app.id}`} 
-                          className="hidden" 
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleDocumentUpload(app.id, 'Quotation', e)}
-                        />
-                        <label 
-                          htmlFor={`quotation-${app.id}`}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#1B4332] text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-[#274e3d] transition-colors"
-                        >
-                          {uploadingDoc === `${app.id}-Quotation` ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                          {lang === "EN" ? "Upload" : "अपलोड करा"}
-                        </label>
+                        <p className="text-sm font-bold text-gray-800">{lang === "EN" ? "Payment Receipt (GST)" : "पेमेंट पावती (GST सह)"}</p>
+                        <p className="text-[10px] text-gray-500">{lang === "EN" ? "Must include GST No." : "GST क्रमांक असणे आवश्यक आहे"}</p>
                       </div>
                     </div>
-
-                    {/* Receipt Upload */}
-                    <div className="bg-white border border-blue-100 p-4 rounded-lg shadow-sm flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-blue-100 p-2 rounded-lg text-blue-700">
-                          <Receipt size={20} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-800">{lang === "EN" ? "Payment Receipt (GST)" : "पेमेंट पावती (GST सह)"}</p>
-                          <p className="text-[10px] text-gray-500">{lang === "EN" ? "Must include GST No." : "GST क्रमांक असणे आवश्यक आहे"}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <input 
-                          type="file" 
-                          id={`receipt-${app.id}`} 
-                          className="hidden" 
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleDocumentUpload(app.id, 'Receipt', e)}
-                        />
-                        <label 
-                          htmlFor={`receipt-${app.id}`}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#1B4332] text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-[#274e3d] transition-colors"
-                        >
-                          {uploadingDoc === `${app.id}-Receipt` ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                          {lang === "EN" ? "Upload" : "अपलोड करा"}
-                        </label>
-                      </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        id={`receipt-${app.id}`} 
+                        className="hidden" 
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => handleDocumentUpload(app.id, 'Receipt', e)}
+                      />
+                      <label 
+                        htmlFor={`receipt-${app.id}`}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#1B4332] text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-[#274e3d] transition-colors"
+                      >
+                        {uploadingDoc === `${app.id}-Receipt` ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        {lang === "EN" ? "Upload" : "अपलोड करा"}
+                      </label>
                     </div>
                   </div>
                 </div>

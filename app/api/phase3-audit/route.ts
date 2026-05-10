@@ -5,10 +5,10 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { appId, quotationUrl, receiptUrl, farmerName, subsidyReason, documentUrls } = await req.json();
+    const { appId, receiptUrl, farmerName, subsidyReason, documentUrls } = await req.json();
 
-    if (!quotationUrl || !receiptUrl) {
-      return NextResponse.json({ success: false, error: "Missing quotation or receipt documents" }, { status: 400 });
+    if (!receiptUrl) {
+      return NextResponse.json({ success: false, error: "Missing receipt document" }, { status: 400 });
     }
 
     // Function to fetch and convert image to base64
@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       };
     };
 
-    const quotationPart = await fetchImage(quotationUrl);
     const receiptPart = await fetchImage(receiptUrl);
     
     const initialDocParts = [];
@@ -79,7 +78,6 @@ export async function POST(req: Request) {
     Your task is to analyze the provided documents for a farmer's subsidy application. 
     You will receive several images:
     - Any initial documents provided (Aadhaar, 7/12 land records, etc.)
-    - The Dealer Quotation (second to last image)
     - The Payment Receipt/Invoice (last image)
 
     Farmer Details:
@@ -88,13 +86,11 @@ export async function POST(req: Request) {
     - Location: Maharashtra
 
     Verification Rules:
-    1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ACROSS ALL DOCUMENTS (Aadhaar, 7/12, Quotation, and Receipt).
+    1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ACROSS ALL DOCUMENTS (Aadhaar, 7/12, and Receipt).
     2. GST Validation: The receipt/invoice MUST contain a valid Maharashtra GST Number starting with '27'.
     3. Currency: The currency must be INR. No foreign currency allowed.
     4. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
-    5. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a pump set quotation must not have a pipe receipt.
-    6. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
-    7. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
+    5. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
     8. Subsidy-Specific Land Record Checks (BAKSY Rules):
        - If applying for a "New Well" (Navin Vihir), the 7/12 extract MUST NOT show any existing well.
        - If applying for "Old Well Repair" (Juni Vihir Durusti) or "Pump Set", the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
@@ -114,9 +110,7 @@ export async function POST(req: Request) {
     Extract the following details from the documents:
     - farmerNameOnDoc: The farmer/customer name found on the documents
     - gstNumber: GST number from the receipt/invoice
-    - quotationItem: The main item/equipment described in the Quotation
     - receiptItem: The main item/equipment described in the Receipt
-    - quotedPrice: The total price shown on the Quotation (numeric value)
     - receiptPrice: The total amount shown on the Receipt (numeric value)
     - landHolding712: The land holding area found specifically in the 7/12 extract (e.g. "1.5 Ha")
     - landHolding8A: The total land holding area found specifically in the 8A ledger (e.g. "1.5 Ha")
@@ -136,9 +130,7 @@ export async function POST(req: Request) {
       "extractedDetails": {
         "farmerNameOnDoc": "...",
         "gstNumber": "...",
-        "quotationItem": "...",
         "receiptItem": "...",
-        "quotedPrice": "...",
         "receiptPrice": "...",
         "landHolding712": "...",
         "landHolding8A": "...",
@@ -168,7 +160,6 @@ export async function POST(req: Request) {
             model.generateContent([
               prompt,
               ...initialDocParts,
-              quotationPart,
               receiptPart
             ]),
             timeoutPromise
@@ -211,10 +202,10 @@ export async function POST(req: Request) {
       const details = auditResult.extractedDetails || {};
 
       // 1. Equipment vs subsidy mismatch
-      if (details.quotationItem) {
-        const itemDesc = details.quotationItem.toLowerCase();
+      if (details.receiptItem) {
+        const itemDesc = details.receiptItem.toLowerCase();
         const expected = subsidyReason?.toLowerCase() || "";
-        // Cross-check: Ensure quotation makes sense for the subsidy (e.g. pump set shouldn't have pipe docs exclusively without pump)
+        // Cross-check: Ensure receipt makes sense for the subsidy
         const mismatch =
           (expected.includes('pump') && itemDesc.includes('pipe')) ||
           (expected.includes('well') && itemDesc.includes('solar'));
@@ -223,39 +214,7 @@ export async function POST(req: Request) {
             ...auditResult,
             verdict: "Rejected",
             flag: "EQUIPMENT_MISMATCH",
-            reason: `Quotation item (${details.quotationItem}) does not match the requested subsidy (${subsidyReason}).`,
-          };
-        }
-      }
-
-      // 2. Item consistency between quotation and receipt
-      if (auditResult.verdict === "Verified" && details.quotationItem && details.receiptItem) {
-        const qItem = details.quotationItem.trim().toLowerCase();
-        const rItem = details.receiptItem.trim().toLowerCase();
-        // Check if one mentions a completely different category than the other
-        if (
-          (qItem.includes('pump') && rItem.includes('pipe')) ||
-          (qItem.includes('well') && rItem.includes('solar'))
-        ) {
-          auditResult = {
-            ...auditResult,
-            verdict: "Rejected",
-            flag: "ITEM_MISMATCH",
-            reason: `Quotation item (${details.quotationItem}) does not match receipt item (${details.receiptItem}).`,
-          };
-        }
-      }
-
-      // 3. Price consistency (allow small tolerance)
-      if (auditResult.verdict === "Verified" && details.quotedPrice && details.receiptPrice) {
-        const qPrice = parseFloat(details.quotedPrice.toString().replace(/[^0-9.]/g, ""));
-        const rPrice = parseFloat(details.receiptPrice.toString().replace(/[^0-9.]/g, ""));
-        if (!isNaN(qPrice) && !isNaN(rPrice) && Math.abs(qPrice - rPrice) > 500) {
-          auditResult = {
-            ...auditResult,
-            verdict: "Rejected",
-            flag: "PRICE_MISMATCH",
-            reason: `Quoted price (₹${qPrice}) differs from receipt amount (₹${rPrice}).`,
+            reason: `Receipt item (${details.receiptItem}) does not match the requested subsidy (${subsidyReason}).`,
           };
         }
       }
