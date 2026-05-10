@@ -75,14 +75,26 @@ export async function POST(req: Request) {
             if (!error && data) {
               imageBuffers.push(Buffer.from(await data.arrayBuffer()));
               // Extract a human-readable name from the filename in the URL
-              const rawFileName = filePath.split('/').pop() || '';
-              // Filenames are typically: timestamp_uuid_DocumentType.ext
-              // Extract the part after the second underscore
-              const nameParts = rawFileName.split('_').slice(2).join('_').split('.')[0];
-              const readableName = nameParts.length > 2
-                ? nameParts.replace(/-/g, ' ').replace(/_/g, ' ')
-                : `Document ${i + 1}`;
-              docTypes.push(readableName || `Document ${i + 1}`);
+              const decodedPath = decodeURIComponent(filePath).replace(/_/g, ' ');
+              const knownTypes = ['7/12 Extract', '8A Holding', 'Aadhaar Card', 'Caste Certificate', 'Bank Passbook Copy', 'Income Certificate', 'Quotation', 'Receipt'];
+              
+              let readableName = `Document ${i + 1}`;
+              for (const kt of knownTypes) {
+                if (decodedPath.toLowerCase().includes(kt.toLowerCase()) || 
+                    decodedPath.toLowerCase().includes(kt.replace(/\//g, ' ').toLowerCase())) {
+                  readableName = kt;
+                  break;
+                }
+              }
+              
+              if (readableName === `Document ${i + 1}`) {
+                const rawFileName = filePath.split('/').pop() || '';
+                const nameParts = rawFileName.split('_').slice(2).join('_').split('.')[0];
+                if (nameParts.length > 2) {
+                  readableName = nameParts.replace(/-/g, ' ').replace(/_/g, ' ');
+                }
+              }
+              docTypes.push(readableName);
               mimeTypes.push(data.type);
             }
           } catch (e) {
@@ -115,7 +127,7 @@ export async function POST(req: Request) {
           const docEval = nimVerdict.document_evaluations?.[idx];
           const docStatus = docEval?.status === 'Verified' ? 'Safe' : (docEval?.status === 'Rejected' ? 'Rejected' : 'Manual_Review');
           return {
-            document_name: type || `Uploaded Document ${idx + 1}`,
+            document_name: docEval?.detected_document_type && docEval.detected_document_type !== 'Unknown' ? docEval.detected_document_type : (type || `Uploaded Document ${idx + 1}`),
             status: docStatus || statusMapped,
             clerk_explanation: docEval?.reason || nimVerdict.reason
           };

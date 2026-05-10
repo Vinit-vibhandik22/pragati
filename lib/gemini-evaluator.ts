@@ -29,6 +29,7 @@ export interface GeminiVerdict {
   verdict: 'Verified' | 'Rejected' | 'Manual_Review_Required';
   reason: string;
   document_evaluations: {
+    detected_document_type?: string;
     status: 'Verified' | 'Rejected' | 'Manual_Review_Required';
     reason: string;
   }[];
@@ -92,7 +93,7 @@ NAME MATCHING RULES (Apply to all documents):
 - COMPLETELY DIFFERENT NAMES -> Mark document as "Rejected".
 
 RULES FOR INDIVIDUAL DOCUMENTS:
-1. Evaluate EACH document individually.
+1. Evaluate EACH document individually. Determine what the document actually is, regardless of the filename provided.
 2. Aadhaar Card: Apply Name Matching Rules. Last 4 digits must also match. Ignore land area or caste constraints for this document. If Name Check passes and digits match, mark "Verified".
 3. 7/12 Extract: 7/12 extracts often have multiple joint owners (सामायिक खातेदार). You MUST find the specific farmer whose name passes the Name Matching Rules. Then:
    a. Check their INDIVIDUAL land holding is between 0.20 Ha and 6.0 Ha. Reject if outside range.
@@ -119,6 +120,7 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
   "reason": "Overall reason",
   "document_evaluations": [
     {
+      "detected_document_type": "Aadhaar Card" | "7/12 Extract" | "8A Holding" | "Caste Certificate" | "Bank Passbook Copy" | "Income Certificate" | "Quotation" | "Receipt" | "Unknown",
       "status": "Verified" | "Rejected" | "Manual_Review_Required",
       "reason": "Specific reason for this exact document"
     }
