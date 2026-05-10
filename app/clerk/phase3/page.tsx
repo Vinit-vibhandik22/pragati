@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner";
 import { useLanguage } from "@/context/LanguageContext";
 import { useDropzone } from "react-dropzone";
-import { uploadDocumentAction } from "@/app/actions/farmer-actions";
 
 export default function Phase3QueuePage() {
   const [applications, setApplications] = useState<any[]>([]);
@@ -235,14 +234,18 @@ export default function Phase3QueuePage() {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_phase3_photo_${appId}.${fileExt}`;
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('fileName', fileName);
       
-      const uploadResult = await uploadDocumentAction(formData);
-      if (!uploadResult.success) throw new Error(uploadResult.error);
+      const { data, error } = await supabase.storage
+        .from('schemes')
+        .upload(fileName, file);
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from('schemes')
+        .getPublicUrl(fileName);
       
-      setUploadedPhotos(prev => ({ ...prev, [appId]: uploadResult.publicUrl! }));
+      setUploadedPhotos(prev => ({ ...prev, [appId]: urlData.publicUrl }));
       toast.success("Inspection photo uploaded successfully");
     } catch (error: any) {
       toast.error("Failed to upload photo: " + error.message);
