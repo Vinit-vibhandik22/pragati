@@ -34,10 +34,17 @@ export async function POST(req: Request) {
     const receiptPart = await fetchImage(receiptUrl);
     const inspectionPhotoPart = await fetchImage(inspectionPhotoUrl);
     
-    // We intentionally SKIP loading initialDocParts to reduce AI processing time.
-    // Initial documents (7/12, Aadhaar, etc.) were already verified in Phase 1 (deep-audit).
-    // Phase 3 is exclusively for verifying the GST Receipt and the Inspection Photo.
-    // This reduces the image count from ~6 to 2, significantly speeding up the API response.
+    const initialDocParts: { inlineData: { data: string; mimeType: string } }[] = [];
+    if (documentUrls && Array.isArray(documentUrls)) {
+      for (const url of documentUrls) {
+        try {
+          const part = await fetchImage(url);
+          initialDocParts.push(part);
+        } catch(e) {
+          console.error("Failed to fetch initial doc:", url);
+        }
+      }
+    }
 
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
@@ -74,9 +81,10 @@ export async function POST(req: Request) {
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
     Your task is to analyze the provided documents for a farmer's subsidy application. 
-    You will receive EXACTLY TWO images:
-    1. The Payment Receipt/Invoice
-    2. The Inspection Photo (last image), which is a geo-tagged photo taken on site.
+    You will receive several images:
+    - Any initial documents provided (Aadhaar, 7/12 land records, etc.)
+    - The Payment Receipt/Invoice
+    - The Inspection Photo (last image), which is a geo-tagged photo taken on site.
 
     Farmer Details:
     - Name: ${farmerName}
@@ -84,20 +92,45 @@ export async function POST(req: Request) {
     - Location: Maharashtra
 
     Verification Rules:
-    1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ON THE RECEIPT.
+    1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ACROSS ALL DOCUMENTS (Aadhaar, 7/12, and Receipt).
     2. GST Validation: The receipt/invoice MUST contain a valid Maharashtra GST Number starting with '27'.
     3. Currency: The currency must be INR. No foreign currency allowed.
     4. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
-    5. Inspection Photo Checks:
+    5. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
+    6. Inspection Photo Checks:
        - Humans: The photo MUST have a minimum of 2 humans visible (one representing the Krushi Sahayak and one representing the farmer). You do not need to verify their faces or clothing specifically, just the presence of at least 2 people. If fewer than 2 people are present, flag as "PHOTO_MISSING_PEOPLE".
        - Equipment/Context: The equipment or site shown in the photo must look similar to the requested subsidy (${subsidyReason}). If it completely mismatches (e.g., applying for a pump set but showing a tractor), flag as "PHOTO_EQUIPMENT_MISMATCH".
        - Location & Date: If there is a GPS/timestamp overlay on the photo, verify that the date looks recent and the location seems like a farm. If it looks fake or heavily edited, flag it. If no stamp is visible, but it generally looks like a farm, you can pass this check.
+    8. Subsidy-Specific Land Record Checks (BAKSY Rules):
+       - If applying for a "New Well" (Navin Vihir), the 7/12 extract MUST NOT show any existing well.
+       - If applying for "Old Well Repair" (Juni Vihir Durusti) or "Pump Set", the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
+       - If the 7/12 fails the subsidy-specific water source rules, flag the application as REJECTED with "WATER_SOURCE_MISMATCH".
+     9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
+        - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
+        - Rules based on subsidy type:
+          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
+          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
+          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
+        - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
+
+    APPLICABILITY FOR THIS APPLICATION:
+    ${waterSourceNote}
+    ${landTypeNote}
 
     Extract the following details from the documents:
-    - farmerNameOnDoc: The farmer/customer name found on the receipt
+    - farmerNameOnDoc: The farmer/customer name found on the documents
     - gstNumber: GST number from the receipt/invoice
     - receiptItem: The main item/equipment described in the Receipt
     - receiptPrice: The total amount shown on the Receipt (numeric value)
+    - landHolding712: The land holding area found specifically in the 7/12 extract (e.g. "1.5 Ha")
+    - landHolding8A: The total land holding area found specifically in the 8A ledger (e.g. "1.5 Ha")
+    - cropType: The type of crop grown, if visible in the 7/12 extract (e.g. "Soybean, Cotton")
+    - landType712: "Jirayat" or "Bagayat" or "Mixed" as found in the 7/12 extract
+    - waterSourceOn712: "Well Present" or "Borewell Present" or "No Water Source" as found in the 7/12 extract
+    - waterSourceCheck: "PASS" or "FAIL" or "NOT_APPLICABLE" — based on Rule 9 above
+    - landTypeCheck: "PASS" or "FAIL" or "NOT_APPLICABLE" — based on Rule 10 above
+    - casteDetected: The caste found in the Caste Certificate
+    - aadhaarValid: "Yes" or "No"
     - photoPeopleCount: Number of people detected in the inspection photo (e.g. "2", "1", "0")
     - photoEquipmentMatch: "Yes" or "No" based on whether the photo matches the subsidy reason
 
@@ -111,6 +144,15 @@ export async function POST(req: Request) {
         "gstNumber": "...",
         "receiptItem": "...",
         "receiptPrice": "...",
+        "landHolding712": "...",
+        "landHolding8A": "...",
+        "cropType": "...",
+        "landType712": "...",
+        "waterSourceOn712": "...",
+        "waterSourceCheck": "...",
+        "landTypeCheck": "...",
+        "casteDetected": "...",
+        "aadhaarValid": "...",
         "photoPeopleCount": "...",
         "photoEquipmentMatch": "..."
       }
@@ -131,6 +173,7 @@ export async function POST(req: Request) {
           const result = await Promise.race([
             model.generateContent([
               prompt,
+              ...initialDocParts,
               receiptPart,
               inspectionPhotoPart
             ]),
