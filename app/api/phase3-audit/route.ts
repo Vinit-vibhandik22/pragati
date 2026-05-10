@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+export const maxDuration = 300; // Allow maximum Vercel timeout for heavy image audits
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: Request) {
@@ -165,7 +167,7 @@ export async function POST(req: Request) {
         try {
           // Timeout to prevent hanging
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Gemini service timeout (>40s)")), 40000)
+            setTimeout(() => reject(new Error("Gemini service timeout (>90s)")), 90000)
           );
 
           const result = await Promise.race([
