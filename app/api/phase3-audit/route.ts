@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
     // Rule 9: Water source check — does the subsidy care about water source?
     const needsWaterSourceCheck =
-      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity|drip|sprinkler/i.test(s);
+      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity/i.test(s);
     // Rule 9 specifics: for new well, water must NOT exist. For others, water MUST exist.
     const waterSourceMustBeAbsent = /new well|navin vihir/i.test(s);
 
@@ -90,25 +90,21 @@ export async function POST(req: Request) {
     Verification Rules:
     1. Identity Consistency: The farmer's name must match or be a close variation of "${farmerName}" ACROSS ALL DOCUMENTS (Aadhaar, 7/12, Quotation, and Receipt).
     2. GST Validation: The receipt/invoice MUST contain a valid Maharashtra GST Number starting with '27'.
-    3. Technical Compliance: If applying for a Tractor, the HP must be below 45 HP.
-    4. Currency: The currency must be INR. No foreign currency allowed.
-    5. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
-    6. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a drip irrigation quotation must not have a tractor receipt.
-    7. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
-    8. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
-    9. Subsidy-Specific Land Record Checks (BAKSY Rules):
+    3. Currency: The currency must be INR. No foreign currency allowed.
+    4. Price limits: Check if the price seems reasonable for a ${subsidyReason}.
+    5. Item Consistency: The item described in the Quotation must match the item in the Receipt. For example, a pump set quotation must not have a pipe receipt.
+    6. Price Consistency: The total price on the Quotation should match the total amount on the Receipt (minor rounding is ok).
+    7. Initial Document Checks: Ensure Aadhaar shows proper ID. For 7/12 and 8A land records, verify land ownership is between 0.20 Ha and 6.0 Ha. For Caste Certificate, ensure the caste is SC (Scheduled Caste) or Nav-Boudha. If any initial document violates these constraints, flag it.
+    8. Subsidy-Specific Land Record Checks (BAKSY Rules):
        - If applying for a "New Well" (Navin Vihir), the 7/12 extract MUST NOT show any existing well.
-       - If applying for "Old Well Repair" (Juni Vihir Durusti), "Pump Set", or "Micro Irrigation" (Drip/Sprinkler), the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
-       - If applying for a "Tractor" or "Implements", no water source check is needed.
+       - If applying for "Old Well Repair" (Juni Vihir Durusti) or "Pump Set", the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
        - If the 7/12 fails the subsidy-specific water source rules, flag the application as REJECTED with "WATER_SOURCE_MISMATCH".
-     10. Jirayat/Bagayat Land Type Check (BAKSY Rules):
+     9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
         - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
         - Rules based on subsidy type:
           * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
           * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
           * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
-          * "Drip Irrigation", "Sprinkler Irrigation": Either type acceptable, but a water source must be present.
-          * "Tractor", "Implements": Either land type acceptable. No restriction.
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
 
     APPLICABILITY FOR THIS APPLICATION:
@@ -135,7 +131,7 @@ export async function POST(req: Request) {
     Respond ONLY with a JSON object (no markdown code blocks, no extra text, just raw JSON):
     {
       "verdict": "Verified" or "Rejected",
-      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "HP_THRESHOLD_EXCEEDED" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH" or "INITIAL_DOCS_INVALID" or "WATER_SOURCE_MISMATCH" or "LAND_TYPE_MISMATCH",
+      "flag": "CLEAN" or "INVALID_GST_FORMAT" or "IDENTITY_MISMATCH" or "OUT_OF_JURISDICTION" or "INVALID_CURRENCY" or "EQUIPMENT_MISMATCH" or "ITEM_MISMATCH" or "PRICE_MISMATCH" or "INITIAL_DOCS_INVALID" or "WATER_SOURCE_MISMATCH" or "LAND_TYPE_MISMATCH",
       "reason": "Detailed explanation of your findings",
       "extractedDetails": {
         "farmerNameOnDoc": "...",
@@ -218,10 +214,10 @@ export async function POST(req: Request) {
       if (details.quotationItem) {
         const itemDesc = details.quotationItem.toLowerCase();
         const expected = subsidyReason?.toLowerCase() || "";
-        // Cross-check: drip subsidy should not have tractor docs and vice-versa
+        // Cross-check: Ensure quotation makes sense for the subsidy (e.g. pump set shouldn't have pipe docs exclusively without pump)
         const mismatch =
-          (expected.includes('drip') && itemDesc.includes('tractor')) ||
-          (expected.includes('tractor') && itemDesc.includes('drip'));
+          (expected.includes('pump') && itemDesc.includes('pipe')) ||
+          (expected.includes('well') && itemDesc.includes('solar'));
         if (mismatch) {
           auditResult = {
             ...auditResult,
@@ -238,8 +234,8 @@ export async function POST(req: Request) {
         const rItem = details.receiptItem.trim().toLowerCase();
         // Check if one mentions a completely different category than the other
         if (
-          (qItem.includes('tractor') && rItem.includes('drip')) ||
-          (qItem.includes('drip') && rItem.includes('tractor'))
+          (qItem.includes('pump') && rItem.includes('pipe')) ||
+          (qItem.includes('well') && rItem.includes('solar'))
         ) {
           auditResult = {
             ...auditResult,

@@ -43,12 +43,6 @@ interface Application {
 }
 
 const SUBSIDY_REASONS_DICT: Record<string, { EN: string, MR: string }> = {
-  "Tractor": { EN: "Tractor", MR: "ट्रॅक्टर" },
-  "Power Tiller": { EN: "Power Tiller", MR: "पॉवर टिलर" },
-  "Rotavator": { EN: "Rotavator", MR: "रोटाव्हेटर" },
-  "Drip Irrigation System": { EN: "Drip Irrigation System", MR: "ठिबक सिंचन प्रणाली" },
-  "Sprinkler Irrigation System": { EN: "Sprinkler Irrigation System", MR: "तुषार सिंचन प्रणाली" },
-  "Solar Pump": { EN: "Solar Pump", MR: "सौर पंप" },
   "New Well": { EN: "New Well", MR: "नवीन विहीर" },
   "Old Well Repair": { EN: "Old Well Repair", MR: "जुनी विहीर दुरुस्ती" },
   "In-well Boring": { EN: "In-well Boring", MR: "इन-वेल बोअरिंग" },

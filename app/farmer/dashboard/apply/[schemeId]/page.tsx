@@ -24,35 +24,11 @@ import { createClient } from "@/lib/supabase/client";
 import { processDocumentAudit, uploadDocumentAction } from "@/app/actions/farmer-actions";
 
 const SCHEMES_DATA: Record<string, any> = {
-  "mechanization": {
-    name: { EN: "State Agriculture Mechanization Scheme", MR: "राज्य कृषी यांत्रिकीकरण योजना" },
-    workflow: "Farmers apply for tractors or power tillers to increase farm productivity through modern machinery.",
-    documents: ["7/12 Extract", "8A Holding", "Aadhaar Card", "Bank Passbook Copy"],
-    icon: <Search className="text-blue-500" />
-  },
-  "micro-irrigation": {
-    name: { EN: "Pradhan Mantri Krishi Sinchayee Yojana (Micro-irrigation)", MR: "पंतप्रधान कृषी सिंचन योजना (ठिबक सिंचन)" },
-    workflow: "Subsidies for installing water-efficient drip and sprinkler irrigation systems on farm lands.",
-    documents: ["7/12 Extract", "8A Holding", "Aadhaar Card"],
-    icon: <CheckCircle2 className="text-green-500" />
-  },
   "ambedkar-yojana": {
     name: { EN: "Dr. Babasaheb Ambedkar Krushi Swavalamban Yojana", MR: "डॉ. बाबासाहेब आंबेडकर कृषी स्वावलंबन योजना" },
     workflow: "Dedicated scheme providing various agricultural assets exclusively for SC/ST category farmers.",
     documents: ["7/12 Extract", "8A Holding", "Aadhaar Card", "Caste Certificate"],
     icon: <ShieldCheck className="text-purple-500" />
-  },
-  "phalbaag": {
-    name: { EN: "Bhausaheb Fundkar Phalbaag Lagvad Yojana", MR: "भाऊसाहेब फुंडकर फळबाग लागवड योजना" },
-    workflow: "Encouraging the planting of fruit orchards (Horticulture) to diversify farmer income.",
-    documents: ["7/12 Extract", "8A Holding", "Aadhaar Card"],
-    icon: <FileText className="text-orange-500" />
-  },
-  "farm-pond": {
-    name: { EN: "Individual Farm Pond (Shet Tale)", MR: "वैयक्तिक शेततळे" },
-    workflow: "Government provides subsidies to dig a pond on the farmer's land to store rainwater for irrigation.",
-    documents: ["7/12 Extract", "8A Holding", "Aadhaar Card"],
-    icon: <Search className="text-cyan-500" />
   }
 };
 
@@ -82,12 +58,12 @@ export default function SchemeApplicationPage() {
   const [subsidyReason, setSubsidyReason] = useState<string>("");
 
   const SUBSIDY_REASONS = [
-    { value: "Tractor", label: { EN: "Tractor", MR: "ट्रॅक्टर" } },
-    { value: "Power Tiller", label: { EN: "Power Tiller", MR: "पॉवर टिलर" } },
-    { value: "Rotavator", label: { EN: "Rotavator", MR: "रोटाव्हेटर" } },
-    { value: "Drip Irrigation System", label: { EN: "Drip Irrigation System", MR: "ठिबक सिंचन प्रणाली" } },
-    { value: "Sprinkler Irrigation System", label: { EN: "Sprinkler Irrigation System", MR: "तुषार सिंचन प्रणाली" } },
-    { value: "Solar Pump", label: { EN: "Solar Pump", MR: "सौर पंप" } }
+    { value: "New Well", label: { EN: "New Well", MR: "नवीन विहीर" } },
+    { value: "Old Well Repair", label: { EN: "Old Well Repair", MR: "जुनी विहीर दुरुस्ती" } },
+    { value: "In-well Boring", label: { EN: "In-well Boring", MR: "इन-वेल बोअरिंग" } },
+    { value: "Pump Set", label: { EN: "Pump Set", MR: "पंप संच" } },
+    { value: "Electricity Connection", label: { EN: "Electricity Connection", MR: "वीज जोडणी" } },
+    { value: "Plastic Lining", label: { EN: "Farm Pond Lining", MR: "शेततळे अस्तरीकरण" } }
   ];
 
   const supabase = createClient();
