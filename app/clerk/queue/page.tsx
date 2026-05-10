@@ -204,6 +204,15 @@ export default function ClerkQueuePage() {
   };
 
   const handleDirectApprove = async (app: Application) => {
+    const auditReport = auditResults[app.id];
+    const isAiSafe = auditReport && auditReport.overall_verdict === 'Safe';
+
+    if (!isAiSafe) {
+      toast.info("AI has flagged this application. You must use the Override Protocol.");
+      openOverrideModal(app);
+      return;
+    }
+
     const confirmApprove = window.confirm("Are you sure you want to approve this application without a justification note?");
     if (!confirmApprove) return;
 
@@ -225,10 +234,38 @@ export default function ClerkQueuePage() {
 
       // Strictly filter out the approved application
       setApplications(prev => prev.filter(a => a.id !== applicationId));
-      // router.refresh() removed to prevent Server Component race conditions duplicating state
-
     } catch (err: any) {
       toast.error("Approval failed: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReject = async (app: Application) => {
+    const auditReport = auditResults[app.id];
+    const isAiSafe = auditReport && auditReport.overall_verdict === 'Safe';
+    
+    let finalReason = "";
+    
+    if (isAiSafe || !auditReport) {
+      const manualReason = window.prompt("AI verified this document as Safe. Please provide a manual reason for rejection:");
+      if (!manualReason) return;
+      finalReason = JSON.stringify({ flag: 'CLERK_REJECTED', reason: manualReason });
+    } else {
+      const aiReason = auditReport.overall_explanation || "AI Flagged Discrepancy";
+      if (!confirm(`AI has already flagged this: "${aiReason}". Confirm rejection to farmer?`)) return;
+      finalReason = JSON.stringify({ flag: 'CLERK_REJECTED', reason: aiReason, ai_report: auditReport });
+    }
+
+    setIsProcessing(true);
+    try {
+      const result = await updateApplicationStatus(app.id, 'Rejected', finalReason);
+      if (!result.success) throw new Error(result.error);
+      
+      toast.success("Application Rejected");
+      setApplications(prev => prev.filter(a => a.id !== app.id));
+    } catch (err: any) {
+      toast.error("Rejection failed: " + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -368,6 +405,13 @@ export default function ClerkQueuePage() {
                         >
                           <Check size={14} />
                           {t('approve')}
+                        </button>
+                        <button 
+                          onClick={() => handleReject(app)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:text-white bg-slate-50 hover:bg-slate-600 border border-slate-200 hover:border-slate-600 rounded-lg transition-all"
+                        >
+                          <XCircle size={14} />
+                          {t('reject')}
                         </button>
                         <button 
                           onClick={() => openOverrideModal(app)}

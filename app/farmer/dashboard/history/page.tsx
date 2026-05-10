@@ -43,7 +43,9 @@ function getFriendlyReason(rawReason: string | null): string | null {
         case "PRICE_MISMATCH":
           return "The price on the receipt appears incorrect. Please re‑upload the correct receipt.";
         case "CLERK_REJECTED":
-          return "Your application was reviewed and rejected by the Clerk. Please contact your local office for details.";
+          return parsed.reason || "Your application was reviewed and rejected. Please contact your local office for details.";
+        case "TAO_REJECTED":
+          return parsed.reason || "Your application was rejected by the Taluka Agriculture Officer.";
         default:
           return parsed.reason || null;
       }
@@ -218,10 +220,20 @@ export default function ApplicationHistoryPage() {
                       <Clock size={18} />
                       {lang === "EN" ? "Documents submitted for Phase 3 audit" : "टप्पा ३ ऑडिटसाठी कागदपत्रे सबमिट केली"}
                     </div>
-                  ) : app.status === 'Verified_by_Clerk' || app.status === 'Approved' ? (
-                    <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-bold text-sm border border-green-200">
+                  ) : app.status === 'Approved' ? (
+                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-bold text-sm border border-emerald-200 shadow-sm">
                       <CheckCircle2 size={18} />
-                      {lang === "EN" ? "Approved by Clerk" : "कारकुनाकडून मंजूर"}
+                      {lang === "EN" ? "Application approved and waiting for fund disbursement" : "अर्ज मंजूर आणि निधी वितरणाची प्रतीक्षा"}
+                    </div>
+                  ) : app.status === 'Verified_by_Clerk' ? (
+                    <div className="flex flex-col gap-1 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-bold text-sm border border-green-200">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={18} />
+                        {lang === "EN" ? "Phase 2 Approved by Clerk" : "टप्पा २: कारकुनाकडून मंजूर"}
+                      </div>
+                      <p className="text-xs font-medium text-green-600">
+                        {lang === "EN" ? "Please upload your GST payment receipt to proceed to final review." : "अंतिम पुनरावलोकनासाठी कृपया आपली GST पेमेंट पावती अपलोड करा."}
+                      </p>
                     </div>
                   ) : app.status === 'Rejected' ? (
                     <div className="flex flex-col gap-1 bg-red-50 text-red-700 px-4 py-2 rounded-lg font-bold text-sm border border-red-200">

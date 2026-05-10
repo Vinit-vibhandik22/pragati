@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     const receiptPart = await fetchImage(receiptUrl);
     
-    const initialDocParts = [];
+    const initialDocParts: { inlineData: { data: string; mimeType: string } }[] = [];
     if (documentUrls && Array.isArray(documentUrls)) {
       for (const url of documentUrls) {
         try {

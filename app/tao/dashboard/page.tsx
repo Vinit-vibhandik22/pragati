@@ -15,7 +15,9 @@ import {
   ChevronUp,
   FileText,
   AlertTriangle,
-  Loader2
+  Loader2,
+  User,
+  Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -68,10 +70,21 @@ export default function TAODashboard() {
       const result = await response.json();
       if (!result.success) throw new Error(result.error);
 
+      const auditData = result.audit;
+      // Preserve calculatedSubsidy if it exists in the original app data
+      if (app.discrepancy_reason) {
+        try {
+          const oldAudit = JSON.parse(app.discrepancy_reason);
+          if (oldAudit.calculatedSubsidy) {
+            auditData.calculatedSubsidy = oldAudit.calculatedSubsidy;
+          }
+        } catch(e) {}
+      }
+
       const { error: updateError } = await supabase
         .from('farmer_applications')
         .update({
-          discrepancy_reason: JSON.stringify(result.audit)
+          discrepancy_reason: JSON.stringify(auditData)
         })
         .eq('id', app.id);
 
@@ -87,14 +100,43 @@ export default function TAODashboard() {
     }
   };
 
-  async function handleFinalApproval(appId: string) {
-    if (!confirm('Are you sure you want to GRANT FINAL SANCTION for this application?')) return;
+  async function handleFinalApproval(app: any) {
+    let aiResult = null;
+    if (app.discrepancy_reason) {
+      try { 
+        aiResult = JSON.parse(app.discrepancy_reason); 
+      } catch(e) {
+        if (app.discrepancy_reason.startsWith('OVERRIDDEN:')) {
+          aiResult = {
+            verdict: 'Rejected',
+            clerkOverrideReason: app.discrepancy_reason.replace('OVERRIDDEN:', '').trim()
+          };
+        }
+      }
+    }
+
+    const isAiRejected = aiResult && (aiResult.verdict === 'Rejected' || aiResult.overall_verdict === 'Unsafe' || aiResult.verdict === 'Action_Required');
+    let updatedReason = app.discrepancy_reason;
+
+    if (isAiRejected) {
+      const taoReason = window.prompt("AI flagged this application as risky. Please provide your final justification for granting sanction:");
+      if (!taoReason) return;
+      
+      const auditData = typeof aiResult === 'object' ? aiResult : {};
+      auditData.taoApprovalNote = taoReason;
+      updatedReason = JSON.stringify(auditData);
+    } else {
+      if (!confirm('Are you sure you want to GRANT FINAL SANCTION for this application?')) return;
+    }
 
     try {
       const { error } = await supabase
         .from('farmer_applications')
-        .update({ status: 'Approved' })
-        .eq('id', appId);
+        .update({ 
+          status: 'Approved',
+          discrepancy_reason: updatedReason
+        })
+        .eq('id', app.id);
         
       if (error) throw error;
       
@@ -102,6 +144,45 @@ export default function TAODashboard() {
       fetchApplications();
     } catch (err) {
       toast.error('Failed to process sanction');
+    }
+  }
+
+  async function handleReject(app: any) {
+    let aiResult = null;
+    if (app.discrepancy_reason) {
+      try {
+        aiResult = JSON.parse(app.discrepancy_reason);
+      } catch(e) {}
+    }
+
+    let finalReason = "";
+    const isAiRejected = aiResult && (aiResult.verdict === 'Rejected' || aiResult.overall_verdict === 'Unsafe');
+
+    if (isAiRejected) {
+      // AI already rejected it, use that reason or confirm it
+      if (!confirm(`AI has already flagged this: "${aiResult.reason}". Confirm rejection to farmer?`)) return;
+      finalReason = app.discrepancy_reason; // Keep the full JSON so farmer-friendly logic works
+    } else {
+      // AI passed it or no audit yet, TAO must provide reason
+      const manualReason = window.prompt("AI verified this application. Please provide a manual reason for rejection:");
+      if (!manualReason) return;
+      finalReason = JSON.stringify({ flag: 'TAO_REJECTED', reason: manualReason });
+    }
+
+    try {
+      const { error } = await supabase
+        .from('farmer_applications')
+        .update({ 
+          status: 'Rejected', 
+          discrepancy_reason: finalReason 
+        })
+        .eq('id', app.id);
+      
+      if (error) throw error;
+      toast.success('Application Rejected');
+      fetchApplications();
+    } catch (err) {
+      toast.error('Failed to reject application');
     }
   }
 
@@ -146,9 +227,17 @@ export default function TAODashboard() {
               if (app.discrepancy_reason) {
                 try {
                   aiResult = JSON.parse(app.discrepancy_reason);
-                } catch(e) {}
+                } catch(e) {
+                  // Fallback for legacy string-based overrides from clerk/queue
+                  if (app.discrepancy_reason.startsWith('OVERRIDDEN:')) {
+                    aiResult = {
+                      verdict: 'Rejected', // Treat as risky since it needed override
+                      clerkOverrideReason: app.discrepancy_reason.replace('OVERRIDDEN:', '').trim()
+                    };
+                  }
+                }
               }
-              const isClean = !aiResult || aiResult.verdict === 'Verified';
+              const isClean = !aiResult || aiResult.verdict === 'Verified' || aiResult.verdict === 'Safe' || app.status === 'Verified_by_AI';
 
               let phase1AiResult = null;
               if (app.extracted_text) {
@@ -186,6 +275,18 @@ export default function TAODashboard() {
                         <CheckCircle size={14} className="text-emerald-500" />
                         <span className="text-xs font-bold text-slate-700">Phase 3: Verified</span>
                       </div>
+                      {aiResult?.calculatedSubsidy && (
+                        <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
+                          <DollarSign size={14} className="text-blue-500" />
+                          <span className="text-xs font-bold text-blue-700">Subsidy: ₹{aiResult.calculatedSubsidy.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {aiResult?.clerkOverrideReason && (
+                        <div className="flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-xl border border-amber-200">
+                          <User size={14} className="text-amber-600" />
+                          <span className="text-xs font-bold text-amber-700">Clerk Note: {aiResult.clerkOverrideReason}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -204,11 +305,14 @@ export default function TAODashboard() {
                     </div>
                     
                     <div className="flex gap-3 w-full md:w-auto mt-2">
-                      <button className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all">
-                        Query Application
+                      <button 
+                        onClick={() => handleReject(app)}
+                        className="flex-1 md:flex-none px-6 py-4 rounded-2xl font-black text-sm text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
+                      >
+                        Reject Application
                       </button>
                       <button 
-                        onClick={() => handleFinalApproval(app.id)}
+                        onClick={() => handleFinalApproval(app)}
                         className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-sm bg-[#1B4332] text-white hover:bg-[#2D6A4F] shadow-2xl shadow-[#1B4332]/30 transition-all active:scale-95"
                       >
                         <Award size={20} />

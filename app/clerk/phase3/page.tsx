@@ -11,6 +11,7 @@ import {
   BadgeCheck,
   Ban,
   Receipt,
+  Clock,
   FileSpreadsheet
 } from "lucide-react";
 import { toast } from "sonner";
@@ -83,7 +84,7 @@ export default function Phase3QueuePage() {
       const { data, error } = await supabase
         .from('farmer_applications')
         .select('*')
-        .eq('status', 'Pending_Phase_3')
+        .in('status', ['Pending_Phase_3', 'Verified_by_Clerk'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -150,16 +151,47 @@ export default function Phase3QueuePage() {
     }
   };
 
-  const handleFinalApprove = async (appId: string) => {
+  const handleFinalApprove = async (app: any) => {
     try {
-      // Preserve the AI audit JSON in discrepancy_reason so TAO can see it
+      const subsidyAmount = calculatedSubsidies[app.id];
+      let updatedDiscrepancyReason = app.discrepancy_reason;
+
+      // Logic: If AI rejected but Clerk approves, Clerk MUST provide a reason for TAO
+      let aiResult = null;
+      if (app.discrepancy_reason) {
+        try { aiResult = JSON.parse(app.discrepancy_reason); } catch(e) {}
+      }
+      
+      const isAiRejected = aiResult && aiResult.verdict === 'Rejected';
+      if (isAiRejected) {
+        const overrideReason = window.prompt("AI rejected this application. Please provide a reason for overriding and approving it (this will be seen by the TAO):");
+        if (!overrideReason) return;
+        
+        const auditData = aiResult || {};
+        auditData.clerkOverrideReason = overrideReason;
+        updatedDiscrepancyReason = JSON.stringify(auditData);
+      }
+
+      if (subsidyAmount !== undefined) {
+        try {
+          const auditData = JSON.parse(updatedDiscrepancyReason || '{}');
+          auditData.calculatedSubsidy = subsidyAmount;
+          updatedDiscrepancyReason = JSON.stringify(auditData);
+        } catch (e) {
+          console.error("Failed to append subsidy to discrepancy_reason", e);
+        }
+      }
+
       const { error } = await supabase
         .from('farmer_applications')
-        .update({ status: 'Sent_to_TAO' })
-        .eq('id', appId);
+        .update({ 
+          status: 'Sent_to_TAO',
+          discrepancy_reason: updatedDiscrepancyReason
+        })
+        .eq('id', app.id);
 
       if (error) throw error;
-      toast.success("Application approved and sent to TAO!");
+      toast.success(isAiRejected ? "Application overridden and sent to TAO" : "Application approved and sent to TAO!");
       fetchApplications();
     } catch (err: any) {
       toast.error("Failed to approve application");
@@ -168,16 +200,26 @@ export default function Phase3QueuePage() {
 
   const handleReject = async (app: any) => {
     try {
-      // Preserve the AI audit result as the rejection reason so the farmer can see it
-      let reason = app.discrepancy_reason || null;
-      // If the audit result doesn't already exist, store a generic reason
-      if (!reason) {
-        reason = JSON.stringify({ flag: 'CLERK_REJECTED', reason: 'Application was rejected by the Clerk during Phase 3 review.' });
+      let aiResult = null;
+      if (app.discrepancy_reason) {
+        try { aiResult = JSON.parse(app.discrepancy_reason); } catch(e) {}
+      }
+      
+      const isAiVerified = aiResult && aiResult.verdict === 'Verified';
+      let finalReason = app.discrepancy_reason;
+
+      if (isAiVerified || !aiResult) {
+        const manualReason = window.prompt("AI verified this application (or no audit run). Please provide a manual reason for rejection:");
+        if (!manualReason) return;
+        finalReason = JSON.stringify({ flag: 'CLERK_REJECTED', reason: manualReason });
+      } else {
+        // AI already rejected it, use that reason or confirm it
+        if (!confirm(`AI has already flagged this: "${aiResult.reason}". Confirm rejection?`)) return;
       }
 
       const { error } = await supabase
         .from('farmer_applications')
-        .update({ status: 'Rejected', discrepancy_reason: reason })
+        .update({ status: 'Rejected', discrepancy_reason: finalReason })
         .eq('id', app.id);
 
       if (error) throw error;
@@ -212,7 +254,7 @@ export default function Phase3QueuePage() {
         <div className="bg-white border border-slate-200 rounded-xl p-16 text-center flex flex-col items-center">
           <FileSearch size={48} className="text-slate-300 mb-4" />
           <h3 className="text-lg font-bold text-slate-700">Queue is empty</h3>
-          <p className="text-slate-500">No phase 3 documents pending review.</p>
+          <p className="text-slate-500 text-sm">{applications.filter(a => a.status === 'Pending_Phase_3').length} Ready for Audit &nbsp;·&nbsp; {applications.filter(a => a.status === 'Verified_by_Clerk').length} Awaiting Farmer Receipt</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
@@ -226,47 +268,64 @@ export default function Phase3QueuePage() {
 
             return (
               <div key={app.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col gap-4">
-                <div className="flex justify-between items-start border-b border-slate-100 pb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-800">{app.scheme_name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">{app.farmer_id}</span>
-                      <span className="text-slate-300">•</span>
-                      <span className="text-sm font-bold text-emerald-600">Sub: {app.subsidy_reason}</span>
+                  <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">{app.scheme_name}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">{app.farmer_id}</span>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-sm font-bold text-emerald-600">Sub: {app.subsidy_reason}</span>
+                      </div>
                     </div>
+                    {app.status === 'Pending_Phase_3' ? (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleReject(app)}
+                          className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200"
+                        >
+                          Reject
+                        </button>
+                        <button 
+                          onClick={() => handleFinalApprove(app)}
+                          disabled={!aiResult && !auditFailedAppIds.includes(app.id)}
+                          className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors shadow-sm ${(!aiResult && !auditFailedAppIds.includes(app.id)) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                          title={(!aiResult && !auditFailedAppIds.includes(app.id)) ? "You must run the Deep Audit before approving" : "Approve and send to TAO"}
+                        >
+                          {(!aiResult && auditFailedAppIds.includes(app.id)) ? "Force Approve (Audit Failed)" : "Approve & Send to TAO"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg text-xs font-bold">
+                        <Clock size={14} />
+                        Awaiting Farmer Receipt
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleReject(app)}
-                      className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200"
-                    >
-                      Reject
-                    </button>
-                    <button 
-                      onClick={() => handleFinalApprove(app.id)}
-                      disabled={!aiResult && !auditFailedAppIds.includes(app.id)}
-                      className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors shadow-sm ${(!aiResult && !auditFailedAppIds.includes(app.id)) ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                      title={(!aiResult && !auditFailedAppIds.includes(app.id)) ? "You must run the Deep Audit before approving" : "Approve and send to TAO"}
-                    >
-                      {(!aiResult && auditFailedAppIds.includes(app.id)) ? "Force Approve (Audit Failed)" : "Approve & Send to TAO"}
-                    </button>
-                  </div>
-                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                    <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Receipt size={16}/> Documents</h4>
-                    <div className="space-y-2">
-                      {app.receipt_url ? (
-                        <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-white p-3 rounded border border-slate-200 hover:border-blue-300 transition-colors">
-                          <span className="text-sm font-medium text-slate-700">GST Payment Receipt</span>
-                          <span className="text-xs text-blue-600 font-bold">View</span>
-                        </a>
-                      ) : (
-                        <div className="p-3 bg-white rounded border border-slate-200 text-slate-400 text-sm italic">No receipt uploaded</div>
-                      )}
+                  {app.status === 'Verified_by_Clerk' ? (
+                    <div className="col-span-2 flex flex-col items-center justify-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
+                      <Clock size={32} className="text-amber-500" />
+                      <div>
+                        <p className="font-bold text-amber-800">Waiting for Farmer to Upload Receipt</p>
+                        <p className="text-xs text-amber-600 mt-1">The farmer has been approved in Phase 2 and must now upload their GST payment receipt to proceed.</p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                        <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><Receipt size={16}/> Documents</h4>
+                        <div className="space-y-2">
+                          {app.receipt_url ? (
+                            <a href={app.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-white p-3 rounded border border-slate-200 hover:border-blue-300 transition-colors">
+                              <span className="text-sm font-medium text-slate-700">GST Payment Receipt</span>
+                              <span className="text-xs text-blue-600 font-bold">View</span>
+                            </a>
+                          ) : (
+                            <div className="p-3 bg-white rounded border border-slate-200 text-slate-400 text-sm italic">No receipt uploaded</div>
+                          )}
+                        </div>
+                      </div>
 
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 flex flex-col">
                     <div className="flex items-center justify-between mb-3">
@@ -344,6 +403,8 @@ export default function Phase3QueuePage() {
                       </div>
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
             );
