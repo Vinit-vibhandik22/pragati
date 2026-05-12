@@ -51,20 +51,22 @@ export async function POST(req: Request) {
     // Per-subsidy rule matrix for BAKSY scheme
     const s = (subsidyReason || '').toLowerCase();
 
-    // Rule 9: Water source check — does the subsidy care about water source?
+    // Rule 9: Water source check — only original well/boring/pump/electricity components need this.
+    // Drip/Sprinkler, Water Supply Pipe, and Storage Tank do NOT require a water source check.
     const needsWaterSourceCheck =
-      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity/i.test(s);
+      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity connection/i.test(s);
     // Rule 9 specifics: for new well, water must NOT exist. For others, water MUST exist.
     const waterSourceMustBeAbsent = /new well|navin vihir/i.test(s);
 
-    // Rule 10: Land type check — does the subsidy care about Jirayat vs Bagayat?
+    // Rule 10: Land type check — only original well/pump/pond components have Jirayat/Bagayat rules.
+    // Drip/Sprinkler, Water Supply Pipe, and Storage Tank have NO land type restriction.
     const needsLandTypeCheck =
-      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity|farm pond/i.test(s);
+      /new well|navin vihir|old well|juni vihir|boring|pump set|electricity connection|farm pond|plastic lining/i.test(s);
     // Rule 10 specifics: which land type is required?
     const requiredLandType = (() => {
-      if (/new well|navin vihir|farm pond/i.test(s)) return 'Jirayat';
-      if (/old well|juni vihir|boring|pump set|electricity/i.test(s)) return 'Bagayat';
-      return null; // no restriction
+      if (/new well|navin vihir|farm pond|plastic lining/i.test(s)) return 'Jirayat';
+      if (/old well|juni vihir|boring|pump set|electricity connection/i.test(s)) return 'Bagayat';
+      return null; // no restriction — applies to Drip/Sprinkler, Water Supply Pipe, Storage Tank
     })();
 
     // Build instruction note to inject into prompt
@@ -105,12 +107,14 @@ export async function POST(req: Request) {
        - If applying for a "New Well" (Navin Vihir), the 7/12 extract MUST NOT show any existing well.
        - If applying for "Old Well Repair" (Juni Vihir Durusti) or "Pump Set", the 7/12 extract MUST explicitly show an existing water source (like a well or borewell).
        - If the 7/12 fails the subsidy-specific water source rules, flag the application as REJECTED with "WATER_SOURCE_MISMATCH".
+       - For "Drip/Sprinkler Irrigation", "Water Supply Pipe", and "Storage Tank/Sump": water source check is NOT APPLICABLE. Set waterSourceCheck to "NOT_APPLICABLE".
      9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
         - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
         - Rules based on subsidy type:
           * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
           * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
           * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
+          * "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": NO land type restriction. Set landTypeCheck to "NOT_APPLICABLE".
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
 
     APPLICABILITY FOR THIS APPLICATION:

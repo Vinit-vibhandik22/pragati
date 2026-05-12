@@ -100,10 +100,11 @@ RULES FOR INDIVIDUAL DOCUMENTS:
    b. Land Type Check (Jirayat/Bagayat) — only if applicable:
 ${(() => {
   const s = (farmerDetails.subsidy_reason || '').toLowerCase();
-  const needsLandTypeCheck = /new well|navin vihir|old well|juni vihir|boring|pump set|electricity|farm pond/i.test(s);
-  if (!needsLandTypeCheck) return '      - Land type check is NOT APPLICABLE for this subsidy. Do not reject based on Jirayat/Bagayat.';
-  if (/new well|navin vihir|farm pond/i.test(s)) return '      - Land MUST be Jirayat. Reject if Bagayat.';
-  if (/old well|juni vihir|boring|pump set|electricity/i.test(s)) return '      - Land MUST be Bagayat. Reject if Jirayat.';
+  // Only original well/pump/pond components have a land type restriction
+  const needsLandTypeCheck = /new well|navin vihir|old well|juni vihir|boring|pump set|electricity connection|farm pond|plastic lining/i.test(s);
+  if (!needsLandTypeCheck) return '      - Land type check is NOT APPLICABLE for this subsidy (Drip/Sprinkler, Water Supply Pipe, and Storage Tank have no Jirayat/Bagayat restriction). Do not reject based on land type.';
+  if (/new well|navin vihir|farm pond|plastic lining/i.test(s)) return '      - Land MUST be Jirayat. Reject if Bagayat.';
+  if (/old well|juni vihir|boring|pump set|electricity connection/i.test(s)) return '      - Land MUST be Bagayat. Reject if Jirayat.';
   return '      - No land type restriction for this subsidy.';
 })()}
    c. Mark "Verified" if all applicable checks pass, otherwise "Rejected".
