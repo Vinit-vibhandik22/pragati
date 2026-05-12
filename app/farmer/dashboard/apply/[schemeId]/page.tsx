@@ -63,7 +63,10 @@ export default function SchemeApplicationPage() {
     { value: "In-well Boring", label: { EN: "In-well Boring", MR: "इन-वेल बोअरिंग" } },
     { value: "Pump Set", label: { EN: "Pump Set", MR: "पंप संच" } },
     { value: "Electricity Connection", label: { EN: "Electricity Connection", MR: "वीज जोडणी" } },
-    { value: "Plastic Lining", label: { EN: "Farm Pond Lining", MR: "शेततळे अस्तरीकरण" } }
+    { value: "Plastic Lining", label: { EN: "Farm Pond Lining", MR: "शेततळे अस्तरीकरण" } },
+    { value: "Drip Sprinkler", label: { EN: "Drip / Sprinkler Irrigation", MR: "ठिबक / तुषार सिंचन" } },
+    { value: "Water Supply Pipe", label: { EN: "Water Supply Pipe", MR: "पाणी पुरवठा पाईप" } },
+    { value: "Storage Tank", label: { EN: "Storage Tank / Sump", MR: "साठवण टाकी / सम्प" } }
   ];
 
   const supabase = createClient();
