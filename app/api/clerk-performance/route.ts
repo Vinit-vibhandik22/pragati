@@ -14,8 +14,8 @@ export async function GET() {
     // Fetch all applications including the clerk attribution column.
     const { data: apps, error } = await supabase
       .from('farmer_applications')
-      .select('id, status, discrepancy_reason, created_at, updated_at, reviewed_by_clerk_id')
-      .order('updated_at', { ascending: false });
+      .select('id, status, discrepancy_reason, created_at, reviewed_by_clerk_id')
+      .order('created_at', { ascending: false });
 
     if (error) {
       // PostgreSQL error code 42703 = undefined_column (migration not run yet)
@@ -79,11 +79,9 @@ export async function GET() {
 
       const clerk = clerkMap[clerkId];
 
-      // Processing time (capped at 30 days)
-      const diffHours = Math.round(
-        ((new Date(app.updated_at).getTime() - new Date(app.created_at).getTime()) / (1000 * 60 * 60)) * 10
-      ) / 10;
-      if (diffHours > 0 && diffHours < 720) clerk.processingTimes.push(diffHours);
+      // Processing time not calculable without updated_at; default to 0
+      const diffHours = 0;
+      if (diffHours > 0) clerk.processingTimes.push(diffHours);
 
       // Categorise
       if (status === 'Verified_by_Clerk') {
@@ -99,7 +97,7 @@ export async function GET() {
       }
 
       clerk.statusBreakdown[status] = (clerk.statusBreakdown[status] || 0) + 1;
-      if (!clerk.lastActive || app.updated_at > clerk.lastActive) clerk.lastActive = app.updated_at;
+      if (!clerk.lastActive || app.created_at > clerk.lastActive) clerk.lastActive = app.created_at;
 
       if (clerk.recentActions.length < 5) {
         let actionLabel = 'Reviewed';
@@ -111,7 +109,7 @@ export async function GET() {
         clerk.recentActions.push({
           appId: app.id.slice(0, 8).toUpperCase(),
           action: actionLabel,
-          date: app.updated_at,
+          date: app.created_at,
           reason: app.discrepancy_reason || 'N/A',
           status,
         });
