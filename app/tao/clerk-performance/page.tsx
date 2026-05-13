@@ -20,7 +20,7 @@ export default function ClerkPerformancePage() {
       const res = await fetch('/api/clerk-performance');
       const data = await res.json();
       setClerkData(data);
-    } catch {
+    } catch (_err) {
       // silently fail — show empty state
     } finally {
       setLoading(false);
@@ -262,7 +262,7 @@ export default function ClerkPerformancePage() {
                                 </p>
                                 {action.reason && action.reason !== 'N/A' && (
                                   <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-1">
-                                    &quot;{action.reason.slice(0, 60)}&quot;
+                                    {'"'}{action.reason.slice(0, 60)}{'"'}
                                   </p>
                                 )}
                               </div>
