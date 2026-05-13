@@ -35,7 +35,7 @@ export const translations = {
     legacy_format: "Legacy Audit Format",
     re_audit: "Re-Audit with New Protocol",
     analyzing_cross_ref: "PRAGATI AI is currently cross-referencing document data with scheme criteria...",
-    verified_by_pragati: "Verified by PRAGATI Deep Audit (Gemini 1.5 Flash) | Point-wise Decision Verdict",
+    verified_by_pragati: "Verified by PRAGATI Deep Audit (Gemini 2.0 Flash) | Point-wise Decision Verdict",
     clerk_id_attached: "Note: Your IP address and Clerk ID (C. Deshmukh) will be attached to this override for transparency.",
     
     // Roles
@@ -98,7 +98,7 @@ export const translations = {
     security_status: "Security Status",
     audit_log_active: "Audit Log Active",
     ai_verification: "AI Verification",
-    ai_verification_desc: "Deep scanning of 7/12 extracts and land documents using Gemini 1.5 Pro to detect fraud and mismatches instantly.",
+    ai_verification_desc: "Deep scanning of 7/12 extracts and land documents using Gemini 2.0 Flash to detect fraud and mismatches instantly.",
     audit_trail_desc: "Immutable blockchain-style ledger records every approval, rejection, and manual override for total accountability.",
     seamless_dbt: "Seamless DBT",
     seamless_dbt_desc: "Direct Benefit Transfer pipeline integrated with state treasury systems for rapid fund disbursement post-verification.",
@@ -216,7 +216,7 @@ export const translations = {
     legacy_format: "जुने ऑडिट स्वरूप",
     re_audit: "नवीन प्रोटोकॉलसह पुन्हा ऑडिट करा",
     analyzing_cross_ref: "प्रगती AI सध्या योजनेच्या निकषांसह दस्तऐवज डेटाची पडताळणी करत आहे...",
-    verified_by_pragati: "प्रगती डीप ऑडिट (Gemini 1.5 Flash) द्वारे सत्यापित | पॉइंट-निहाय निर्णय निकाल",
+    verified_by_pragati: "प्रगती डीप ऑडिट (Gemini 2.0 Flash) द्वारे सत्यापित | पॉइंट-निहाय निर्णय निकाल",
     clerk_id_attached: "टीप: पारदर्शकतेसाठी तुमचा IP पत्ता आणि लिपिक आयडी (C. Deshmukh) या ओव्हरराइडशी जोडला जाईल.",
 
     // Roles
@@ -279,7 +279,7 @@ export const translations = {
     security_status: "सुरक्षा स्थिती",
     audit_log_active: "ऑडिट लॉग सक्रिय",
     ai_verification: "AI सत्यापन",
-    ai_verification_desc: "फसवणूक आणि विसंगती त्वरित शोधण्यासाठी जेमिनी १.५ प्रो वापरून ७/१२ उतारे आणि जमिनीच्या कागदपत्रांचे सखोल स्कॅनिंग.",
+    ai_verification_desc: "फसवणूक आणि विसंगती त्वरित शोधण्यासाठी जेमिनी २.० फ्लॅश वापरून ७/१२ उतारे आणि जमिनीच्या कागदपत्रांचे सखोल स्कॅनिंग.",
     audit_trail_desc: "पूर्ण उत्तरदायित्वासाठी प्रत्येक मंजुरी, नकार आणि मॅन्युअल ओव्हरराइड रेकॉर्ड करणारे अपरिवर्तनीय ब्लॉकचेन-शैलीतील लेजर.",
     seamless_dbt: "अखंड DBT",
     seamless_dbt_desc: "सत्यापनानंतर जलद निधी वितरणासाठी राज्य कोषागार प्रणालींशी एकत्रित थेट लाभ हस्तांतरण पाइपलाइन.",

@@ -12,9 +12,18 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
-export async function updateApplicationStatus(applicationId: string, status: string, justification?: string) {
+export async function updateApplicationStatus(
+  applicationId: string,
+  status: string,
+  justification?: string,
+  clerkId?: string          // ← real clerk ID passed from the UI
+) {
   try {
-    const updatePayload: any = { status };
+    const resolvedClerkId = clerkId || 'CLERK_UNKNOWN';
+    const updatePayload: any = {
+      status,
+      reviewed_by_clerk_id: resolvedClerkId,  // ← persisted for analytics
+    };
     
     // Determine action type for audit trail
     let actionType = 'STATUS_UPDATE';
@@ -43,11 +52,12 @@ export async function updateApplicationStatus(applicationId: string, status: str
       .insert({
         application_id: applicationId,
         action_taken: actionType,
-        performed_by: 'Clerk_Deshmukh',
+        performed_by: resolvedClerkId,
         ip_address: 'demo_session',
         details: {
           new_status: status,
           justification: justification || null,
+          clerk_id: resolvedClerkId,
           timestamp_ist: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
         }
       });
@@ -62,8 +72,6 @@ export async function updateApplicationStatus(applicationId: string, status: str
     revalidatePath('/clerk/audit');
 
     // 3. Fire-and-forget email notification (NEVER blocks approval)
-    // We pass a generic "Farmer" name since we don't fetch the user profile here,
-    // and we pass the actionType for the status.
     void sendFarmerEmail("Honored Farmer", actionType).catch(console.error);
     
     return { success: true };

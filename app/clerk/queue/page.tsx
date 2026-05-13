@@ -71,6 +71,13 @@ export default function ClerkQueuePage() {
 
   const router = useRouter();
   const { language, t } = useLanguage();
+  const [clerkId, setClerkId] = React.useState('CLERK_UNKNOWN');
+
+  // Read clerk identity from localStorage (set by clerk/layout.tsx)
+  React.useEffect(() => {
+    const id = localStorage.getItem('clerk_id') || 'CLERK_UNKNOWN';
+    setClerkId(id);
+  }, []);
 
   const getLocalizedText = (text: string) => {
     if (!text) return "";
@@ -182,7 +189,8 @@ export default function ClerkQueuePage() {
       const result = await updateApplicationStatus(
         applicationId, 
         'Verified_by_Clerk', 
-        `OVERRIDDEN: ${overrideJustification}`
+        `OVERRIDDEN: ${overrideJustification}`,
+        clerkId
       );
 
       if (!result.success) throw new Error(result.error);
@@ -222,7 +230,8 @@ export default function ClerkQueuePage() {
       const result = await updateApplicationStatus(
         applicationId, 
         'Verified_by_Clerk', 
-        'DIRECT_APPROVAL: Verified by Clerk visually'
+        'DIRECT_APPROVAL: Verified by Clerk visually',
+        clerkId
       );
 
       if (!result.success) throw new Error(result.error);
@@ -259,7 +268,7 @@ export default function ClerkQueuePage() {
 
     setIsProcessing(true);
     try {
-      const result = await updateApplicationStatus(app.id, 'Rejected', finalReason);
+      const result = await updateApplicationStatus(app.id, 'Rejected', finalReason, clerkId);
       if (!result.success) throw new Error(result.error);
       
       toast.success("Application Rejected");

@@ -91,7 +91,7 @@ export default function SchemeApplicationPage() {
 
   const validateDocument = async (docName: string, file: File) => {
     setValidationStatuses(prev => ({ ...prev, [docName]: "validating" }));
-    setValidationResults(prev => ({ ...prev, [docName]: { feedback: "Analysing with Gemini Vision..." } }));
+    setValidationResults(prev => ({ ...prev, [docName]: { feedback: "Analysing with Gemini 2.0 Flash..." } }));
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -193,7 +193,7 @@ export default function SchemeApplicationPage() {
         description: `ID: ${appId}. Starting AI Audit...`
       });
 
-      // Trigger AI Audit for relevant documents (Single Batch Call to Gemini 1.5 Flash)
+      // Trigger AI Audit for relevant documents (Single Batch Call to Gemini 2.0 Flash)
       const auditFormData = new FormData();
       let hasAuditDocs = false;
       
@@ -207,7 +207,7 @@ export default function SchemeApplicationPage() {
 
       if (hasAuditDocs) {
         toast.promise(processDocumentAudit(appId, auditFormData), {
-          loading: `Auditing documents with Gemini 1.5 Flash...`,
+          loading: `Auditing documents with Gemini 2.0 Flash...`,
           success: (res: any) => {
             if (res.verdict === 'Verified') return `Documents Verified by AI!`;
             return `AI Review: ${res.verdict}. ${res.reason}`;
@@ -470,7 +470,7 @@ function DocumentUploadCard({
                 </div>
                 <div className="flex flex-col gap-1 flex-1">
                   <span className="font-bold uppercase tracking-wide text-[10px]">
-                    {isValidating ? "Gemini Vision — Analysing..." :
+                    {isValidating ? "Gemini 2.0 Flash — Analysing..." :
                      isWrongType ? "Wrong Document Type Detected" :
                      isBlurry && !isWrongType ? "Image Quality Warning" :
                      validationStatus === "clean" ? "Document Verified by AI" :

@@ -27,6 +27,20 @@ export default function ClerkLayout({
   const router = useRouter();
   const { t } = useLanguage();
 
+  // Store the clerk's ID in localStorage so child pages can read it
+  // for attributing actions in the database. Change this value when
+  // real auth is implemented (replace with the authenticated user's ID).
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (!localStorage.getItem('clerk_id')) {
+        localStorage.setItem('clerk_id', 'CLERK_DESHMUKH');
+      }
+      if (!localStorage.getItem('clerk_name')) {
+        localStorage.setItem('clerk_name', 'C. Deshmukh');
+      }
+    }
+  }, []);
+
   const handleLogout = () => {
     // Clear any local state if needed (for demo purpose)
     localStorage.clear();

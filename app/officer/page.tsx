@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
+  PieChart, Pie, Cell, Legend, RadialBarChart, RadialBar
 } from 'recharts'
 import { 
   ShieldAlert, Users, FileText, Clock, CheckCircle, XCircle, 
@@ -11,7 +11,8 @@ import {
   ChevronRight, MoreVertical, LayoutDashboard, ListChecks, 
   HeartPulse, Info, Loader2, ArrowUpRight, ArrowDownRight,
   LogOut, Check, X, ChevronDown, ChevronUp, Plus, Upload, 
-  Database, Eye, MessageSquareText
+  Database, Eye, MessageSquareText, UserCheck, TrendingUp, 
+  Zap, Award, Activity, Timer, ShieldCheck, ThumbsUp, ThumbsDown
 } from 'lucide-react'
 import { toast } from 'sonner'
 import FarmerTable from '@/components/officer/FarmerTable'
@@ -29,7 +30,7 @@ const RISK_COLORS: Record<string, string> = {
 
 export default function OfficerDashboard() {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'distress'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'distress' | 'clerks'>('overview')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   
@@ -39,6 +40,9 @@ export default function OfficerDashboard() {
   const [distressData, setDistressData] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [clerkData, setClerkData] = useState<any>(null)
+  const [clerkLoading, setClerkLoading] = useState(false)
+  const [expandedClerk, setExpandedClerk] = useState<string | null>(null)
 
   // --- NEW STATES FOR USER REQUESTS ---
   const [searchTerm, setSearchTerm] = useState('')
@@ -82,6 +86,19 @@ export default function OfficerDashboard() {
     } finally {
       setIsLoading(false)
       setIsRefreshing(false)
+    }
+  }, [])
+
+  const fetchClerkData = useCallback(async () => {
+    setClerkLoading(true)
+    try {
+      const res = await fetch('/api/clerk-performance')
+      const data = await res.json()
+      setClerkData(data)
+    } catch (err) {
+      toast.error('Failed to load clerk performance data')
+    } finally {
+      setClerkLoading(false)
     }
   }, [])
 
@@ -213,6 +230,13 @@ export default function OfficerDashboard() {
           >
             <HeartPulse className="w-5 h-5" />
             {t('distress_watchlist')}
+          </button>
+          <button 
+            onClick={() => { setActiveTab('clerks'); if (!clerkData) fetchClerkData(); }}
+            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-base font-bold transition-all ${activeTab === 'clerks' ? 'bg-[#1B4332] text-white shadow-xl shadow-green-900/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+          >
+            <UserCheck className="w-5 h-5" />
+            Clerk Performance
           </button>
         </nav>
 
@@ -539,6 +563,279 @@ export default function OfficerDashboard() {
                   ))}
                </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'clerks' && (
+          <div className="space-y-10 animate-in fade-in slide-in-from-right-6 duration-700">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Clerk Performance Dashboard</h2>
+                <p className="text-slate-500 text-base mt-1">Document processing throughput, approval rates & override analysis</p>
+              </div>
+              <button
+                onClick={fetchClerkData}
+                disabled={clerkLoading}
+                className="px-5 py-3 bg-[#1B4332] text-white rounded-2xl font-black flex items-center gap-2 hover:bg-[#2D6A4F] transition-all shadow-lg disabled:opacity-70"
+              >
+                <RefreshCcw className={`w-4 h-4 ${clerkLoading ? 'animate-spin' : ''}`} />
+                Refresh Stats
+              </button>
+            </div>
+
+            {clerkLoading ? (
+              <div className="flex flex-col items-center justify-center py-32 gap-4">
+                <Loader2 className="w-10 h-10 text-[#1B4332] animate-spin" />
+                <p className="text-slate-500 font-bold animate-pulse">Compiling clerk performance data...</p>
+              </div>
+            ) : clerkData ? (
+              <>
+                {/* Summary KPIs */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="bg-white rounded-[2rem] border-2 border-slate-200 p-7 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Total Applications</p>
+                    <p className="text-4xl font-black text-slate-900">{clerkData.summary?.total ?? '—'}</p>
+                    <p className="text-xs text-slate-500 mt-2 font-bold">All statuses combined</p>
+                  </div>
+                  <div className="bg-white rounded-[2rem] border-2 border-emerald-200/60 p-7 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600 mb-2">Clerk Approved</p>
+                    <p className="text-4xl font-black text-emerald-700">{clerkData.summary?.approved ?? '—'}</p>
+                    <p className="text-xs text-slate-500 mt-2 font-bold">Verified_by_Clerk status</p>
+                  </div>
+                  <div className="bg-white rounded-[2rem] border-2 border-red-200/60 p-7 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-red-500 mb-2">Rejected</p>
+                    <p className="text-4xl font-black text-red-700">{clerkData.summary?.rejected ?? '—'}</p>
+                    <p className="text-xs text-slate-500 mt-2 font-bold">Clerk-rejected applications</p>
+                  </div>
+                  <div className="bg-white rounded-[2rem] border-2 border-amber-200/60 p-7 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-600 mb-2">Pending Queue</p>
+                    <p className="text-4xl font-black text-amber-700">{clerkData.summary?.pending ?? '—'}</p>
+                    <p className="text-xs text-slate-500 mt-2 font-bold">Awaiting clerk action</p>
+                  </div>
+                </div>
+
+                {/* Clerk Cards */}
+                <div className="space-y-6">
+                  <h3 className="text-xl font-black text-slate-800 tracking-tight">Individual Clerk Breakdown</h3>
+                  {(clerkData.clerks || []).map((clerk: any, idx: number) => (
+                    <div key={clerk.name} className={`bg-white rounded-[2rem] border-2 shadow-sm overflow-hidden transition-all ${
+                      expandedClerk === clerk.name ? 'border-[#1B4332] shadow-xl' : 'border-slate-200 hover:border-slate-300'
+                    }`}>
+                      {/* Card Header */}
+                      <button
+                        className="w-full p-8 flex items-center justify-between text-left hover:bg-slate-50/50 transition-colors"
+                        onClick={() => setExpandedClerk(expandedClerk === clerk.name ? null : clerk.name)}
+                      >
+                        <div className="flex items-center gap-6">
+                          {/* Rank Badge */}
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner border-2 ${
+                            idx === 0 ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                            idx === 1 ? 'bg-slate-100 text-slate-600 border-slate-300' :
+                            'bg-orange-50 text-orange-600 border-orange-200'
+                          }`}>
+                            #{idx + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-xl font-black text-slate-900">{clerk.name}</h4>
+                              {idx === 0 && (
+                                <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                  <Award className="w-3 h-3" /> Top Performer
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-500 font-bold mt-0.5">
+                              Last active: {clerk.lastActive ? new Date(clerk.lastActive).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Quick Stats Row */}
+                        <div className="flex items-center gap-8">
+                          <div className="text-center">
+                            <p className="text-2xl font-black text-slate-900">{clerk.totalProcessed}</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Processed</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-2xl font-black text-emerald-600">{clerk.approvalRate}%</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Approval Rate</p>
+                          </div>
+                          <div className="text-center">
+                            <p className={`text-2xl font-black ${clerk.overrideRate > 20 ? 'text-red-600' : 'text-amber-600'}`}>{clerk.overrideRate}%</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Override Rate</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-2xl font-black text-slate-700">{clerk.avgProcessingHrs}h</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Avg. Time</p>
+                          </div>
+                          {/* Performance Score Gauge */}
+                          <div className="flex flex-col items-center">
+                            <div className="relative w-16 h-16">
+                              <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">
+                                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" strokeWidth="3" />
+                                <circle
+                                  cx="18" cy="18" r="15.9" fill="none"
+                                  stroke={clerk.performanceScore >= 70 ? '#1B4332' : clerk.performanceScore >= 40 ? '#F59E0B' : '#EF4444'}
+                                  strokeWidth="3"
+                                  strokeDasharray={`${clerk.performanceScore} ${100 - clerk.performanceScore}`}
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                              <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-slate-900 rotate-0">
+                                {clerk.performanceScore}
+                              </span>
+                            </div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Score</p>
+                          </div>
+                          {expandedClerk === clerk.name ? <ChevronUp className="w-6 h-6 text-slate-400" /> : <ChevronDown className="w-6 h-6 text-slate-400" />}
+                        </div>
+                      </button>
+
+                      {/* Expanded Detail */}
+                      {expandedClerk === clerk.name && (
+                        <div className="px-8 pb-8 border-t border-slate-100 animate-in slide-in-from-top-4 duration-300">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8">
+                            {/* Metric Breakdown */}
+                            <div className="space-y-4">
+                              <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Action Breakdown</p>
+                              <div className="space-y-3">
+                                {[
+                                  { label: 'Direct Approvals', value: clerk.approved, color: 'bg-emerald-500', icon: <ThumbsUp className="w-4 h-4" /> },
+                                  { label: 'Rejections', value: clerk.rejected, color: 'bg-red-500', icon: <ThumbsDown className="w-4 h-4" /> },
+                                  { label: 'AI Flag Overrides', value: clerk.overrides, color: 'bg-amber-500', icon: <ShieldCheck className="w-4 h-4" /> },
+                                  { label: 'AI Audits Run', value: clerk.aiAudits, color: 'bg-blue-500', icon: <Zap className="w-4 h-4" /> },
+                                  { label: 'Pending in Queue', value: clerk.pending, color: 'bg-slate-300', icon: <Clock className="w-4 h-4" /> },
+                                ].map(item => (
+                                  <div key={item.label} className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-xl ${item.color} flex items-center justify-center text-white shadow-sm`}>
+                                      {item.icon}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex justify-between items-center mb-1">
+                                        <span className="text-xs font-bold text-slate-700">{item.label}</span>
+                                        <span className="text-xs font-black text-slate-900">{item.value}</span>
+                                      </div>
+                                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full ${item.color} rounded-full transition-all duration-700`}
+                                          style={{ width: `${clerk.totalProcessed > 0 ? Math.round((item.value / (clerk.totalProcessed + clerk.pending)) * 100) : 0}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Performance Indicators */}
+                            <div className="space-y-4">
+                              <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Performance Indicators</p>
+                              <div className="space-y-4">
+                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Timer className="w-4 h-4 text-[#1B4332]" />
+                                    <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Avg. Processing Time</span>
+                                  </div>
+                                  <p className="text-3xl font-black text-slate-900">{clerk.avgProcessingHrs}<span className="text-base font-bold text-slate-400 ml-1">hrs</span></p>
+                                  <p className="text-[11px] text-slate-500 mt-1">{clerk.avgProcessingHrs <= 24 ? '✅ Within SLA (24h target)' : '⚠️ Exceeds SLA target'}</p>
+                                </div>
+                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Activity className="w-4 h-4 text-amber-500" />
+                                    <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Override Risk Level</span>
+                                  </div>
+                                  <p className={`text-3xl font-black ${clerk.overrideRate > 20 ? 'text-red-600' : clerk.overrideRate > 10 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                    {clerk.overrideRate > 20 ? 'HIGH' : clerk.overrideRate > 10 ? 'MEDIUM' : 'LOW'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 mt-1">{clerk.overrides} overrides out of {clerk.totalProcessed} processed</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Recent Actions Timeline */}
+                            <div className="space-y-4">
+                              <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Recent Actions</p>
+                              <div className="space-y-3">
+                                {clerk.recentActions.length === 0 ? (
+                                  <p className="text-sm text-slate-400 italic">No recent actions recorded.</p>
+                                ) : clerk.recentActions.map((action: any, i: number) => (
+                                  <div key={i} className="flex items-start gap-3">
+                                    <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 mt-2 ${
+                                      action.status === 'Verified_by_Clerk' ? 'bg-emerald-500' :
+                                      action.status === 'Rejected' ? 'bg-red-500' :
+                                      action.status === 'Verified_by_AI' ? 'bg-blue-500' : 'bg-slate-300'
+                                    }`} />
+                                    <div className="flex-1 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                      <div className="flex justify-between items-start">
+                                        <span className="text-xs font-black text-slate-800">{action.action}</span>
+                                        <span className="text-[10px] text-slate-400 font-bold ml-2">#{action.appId}</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 mt-0.5">
+                                        {new Date(action.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {new Date(action.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                      {action.reason && action.reason !== 'N/A' && (
+                                        <p className="text-[10px] text-slate-400 mt-1 line-clamp-1 italic">"{action.reason.slice(0, 60)}..."</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Comparative Bar Chart */}
+                <div className="bg-white rounded-[2rem] p-10 border border-slate-200 shadow-sm">
+                  <h3 className="text-xl font-black text-slate-900 mb-2">Comparative Throughput</h3>
+                  <p className="text-slate-500 text-sm mb-8">Total documents processed vs approvals vs rejections per clerk</p>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={(clerkData.clerks || []).map((c: any) => ({
+                          name: c.name.split(' ')[0],
+                          Processed: c.totalProcessed,
+                          Approved: c.approved,
+                          Rejected: c.rejected,
+                          Overrides: c.overrides,
+                        }))}
+                        barGap={4}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontWeight: '700' }} />
+                        <YAxis fontSize={12} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontWeight: '600' }} />
+                        <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', padding: '12px' }} />
+                        <Bar dataKey="Processed" fill="#1B4332" radius={[6, 6, 0, 0]} barSize={28} />
+                        <Bar dataKey="Approved" fill="#40916C" radius={[6, 6, 0, 0]} barSize={28} />
+                        <Bar dataKey="Rejected" fill="#EF4444" radius={[6, 6, 0, 0]} barSize={28} />
+                        <Bar dataKey="Overrides" fill="#F59E0B" radius={[6, 6, 0, 0]} barSize={28} />
+                        <Legend verticalAlign="top" align="right" height={36} iconType="circle" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-32 gap-6">
+                <div className="w-24 h-24 rounded-3xl bg-slate-100 flex items-center justify-center">
+                  <UserCheck className="w-12 h-12 text-slate-300" />
+                </div>
+                <div className="text-center">
+                  <h3 className="text-xl font-black text-slate-700">No Performance Data Yet</h3>
+                  <p className="text-slate-400 mt-2">Click "Refresh Stats" to load clerk performance metrics.</p>
+                </div>
+                <button
+                  onClick={fetchClerkData}
+                  className="px-8 py-4 bg-[#1B4332] text-white rounded-2xl font-black hover:bg-[#2D6A4F] transition-all shadow-lg"
+                >
+                  Load Performance Data
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
