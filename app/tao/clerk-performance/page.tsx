@@ -19,9 +19,11 @@ export default function ClerkPerformancePage() {
     try {
       const res = await fetch('/api/clerk-performance');
       const data = await res.json();
-      setClerkData(data);
+      // Always set data even on error — the API returns a safe shape
+      setClerkData(data ?? { clerks: [], summary: { total: 0, approved: 0, rejected: 0, pending: 0 } });
     } catch (_err) {
-      // silently fail — show empty state
+      // Network failure — show empty state
+      setClerkData({ clerks: [], summary: { total: 0, approved: 0, rejected: 0, pending: 0 } });
     } finally {
       setLoading(false);
     }
@@ -54,17 +56,25 @@ export default function ClerkPerformancePage() {
           <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
           <p className="text-slate-500 font-bold animate-pulse">Compiling clerk performance data...</p>
         </div>
-      ) : !clerkData || clerkData.clerks?.length === 0 ? (
+      ) : !clerkData || (clerkData.clerks?.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-40 gap-6">
           <div className="w-24 h-24 rounded-3xl bg-slate-100 flex items-center justify-center">
             <UserCheck className="w-12 h-12 text-slate-300" />
           </div>
           <div className="text-center">
-            <h3 className="text-xl font-black text-slate-700">No Performance Data Yet</h3>
+            <h3 className="text-xl font-black text-slate-700">
+              {clerkData?.warning ? 'SQL Migration Required' : 'No Performance Data Yet'}
+            </h3>
             <p className="text-slate-400 mt-2 max-w-sm">
-              Clerk actions will appear here once clerks begin processing applications
-              and the <code className="bg-slate-100 px-1 rounded text-xs">reviewed_by_clerk_id</code> column is populated.
+              {clerkData?.warning
+                ? 'Run the SQL migration in Supabase to add the reviewed_by_clerk_id column, then refresh.'
+                : 'Clerk actions will appear here once clerks begin processing applications.'}
             </p>
+            {clerkData?.warning && (
+              <code className="mt-3 inline-block bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-xs font-mono">
+                ALTER TABLE farmer_applications ADD COLUMN reviewed_by_clerk_id TEXT;
+              </code>
+            )}
           </div>
         </div>
       ) : (
