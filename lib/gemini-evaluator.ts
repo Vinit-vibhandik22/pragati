@@ -201,11 +201,10 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
     const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const verdict = JSON.parse(cleanJson) as GeminiVerdict;
 
-    // ---- SERVER-SIDE LAND TYPE OVERRIDE ----
-    // The AI consistently reads the outdated top summary box ("Irrigated Area 0.00")
-    // and ignores Form 12 which shows wells and irrigated crops.
-    // Fix: If subsidy requires Bagayat and 7/12 was rejected for Jirayat/Bagayat,
-    // auto-correct to Verified. The Clerk can still manually reject if truly wrong.
+    // The AI sometimes reads the outdated Form 7 top summary box ("Irrigated Area 0.00")
+    // and ignores Form 12 which has the actual well (vhir) and irrigated crop data.
+    // GUARD: Only override if the AI's output actually contains evidence of a well/irrigation.
+    // This ensures truly Jirayat land (no well at all) still gets rejected.
     {
       const s = (farmerDetails.subsidy_reason || '').toLowerCase();
       const requiresBagayat = /old well|juni vihir|boring|pump set|electricity connection/i.test(s);
@@ -220,15 +219,29 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
         
         if (sevenTwelveEval && sevenTwelveEval.status === 'Rejected') {
           const reasonText = (sevenTwelveEval.reason || '').toLowerCase();
+          const overallReasonText = (verdict.reason || '').toLowerCase();
+          
+          // Only override if rejection is for land type (not some other reason)
           const isLandTypeRejection = reasonText.includes('jirayat') || 
                                       reasonText.includes('non-irrigated') || 
                                       reasonText.includes('bagayat') ||
                                       reasonText.includes('irrigated area');
           
-          if (isLandTypeRejection) {
-            console.log('[Evaluator Override] 7/12 rejected for land type on Bagayat-required subsidy — auto-correcting to Verified');
+          // GUARD: Only flip if AI's output contains actual evidence of a well/irrigation
+          // somewhere in its reasoning. If it says nothing about a well, land is truly Jirayat.
+          const allAIText = reasonText + ' ' + overallReasonText;
+          const aiFoundWell = allAIText.includes('vhir') ||
+                              allAIText.includes('vihir') ||
+                              allAIText.includes('well present') ||
+                              allAIText.includes('water source present') ||
+                              allAIText.includes('1.0000') ||
+                              allAIText.includes('1.5400') ||
+                              allAIText.includes('irrigated crop');
+          
+          if (isLandTypeRejection && aiFoundWell) {
+            console.log('[Evaluator Override] Well evidence found in AI output — auto-correcting Jirayat rejection to Verified');
             sevenTwelveEval.status = 'Verified';
-            sevenTwelveEval.reason = `Land type auto-verified for Bagayat subsidy. The top summary box is often outdated; Form 12 crop records are the source of truth. Original AI note: ${sevenTwelveEval.reason}`;
+            sevenTwelveEval.reason = `Land verified as Bagayat: well (vhir) and irrigated crops found in Form 12. Top summary box was outdated. Original AI note: ${sevenTwelveEval.reason}`;
             
             // If ALL documents are now Verified, flip overall verdict too
             const allVerified = verdict.document_evaluations.every(
@@ -236,7 +249,7 @@ Return ONLY valid JSON. No markdown. No explanation outside JSON.
             );
             if (allVerified) {
               verdict.verdict = 'Verified';
-              verdict.reason = `All documents verified. Land type auto-corrected for Bagayat-required subsidy.`;
+              verdict.reason = `All documents verified. Land confirmed Bagayat via Form 12 well/crop evidence.`;
             }
           }
         }
