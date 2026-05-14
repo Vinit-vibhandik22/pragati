@@ -221,6 +221,35 @@ export async function POST(req: Request) {
       };
     }
 
+    // ---- SERVER-SIDE LAND TYPE OVERRIDE ----
+    // The AI often gets confused by the top summary box on the 7/12.
+    // We deterministically override: if the AI found a water source (well/vhir),
+    // it physically means the land is Bagayat, so landTypeCheck MUST pass.
+    {
+      const details = auditResult.extractedDetails || {};
+      const waterSourceResult = (details.waterSourceCheck || '').toUpperCase();
+      const landTypeResult = (details.landTypeCheck || '').toUpperCase();
+      const waterSourceOnDoc = (details.waterSourceOn712 || '').toLowerCase();
+      const hasWell = waterSourceResult === 'PASS' || 
+                      waterSourceOnDoc.includes('well') || 
+                      waterSourceOnDoc.includes('vhir') ||
+                      waterSourceOnDoc.includes('vihir');
+
+      // For subsidies that require Bagayat: if a well exists, the land IS Bagayat.
+      // Auto-correct landTypeCheck = FAIL to PASS if water source is present.
+      if (hasWell && requiredLandType === 'Bagayat' && landTypeResult === 'FAIL') {
+        console.log('[Phase3 Override] waterSourceCheck passed, auto-correcting landTypeCheck from FAIL to PASS');
+        auditResult.extractedDetails.landTypeCheck = 'PASS';
+        auditResult.extractedDetails.landType712 = 'Bagayat';
+        // If the ONLY reason for rejection was LAND_TYPE_MISMATCH, flip to Verified
+        if (auditResult.verdict === 'Rejected' && auditResult.flag === 'LAND_TYPE_MISMATCH') {
+          auditResult.verdict = 'Verified';
+          auditResult.flag = 'CLEAN';
+          auditResult.reason = `Land verified as Bagayat based on existing water source (well/vhir) found in crop records. ${auditResult.reason}`;
+        }
+      }
+    }
+
     // ---- Additional server-side validation as a safety net ----
     if (auditResult.verdict === "Verified") {
       const details = auditResult.extractedDetails || {};
