@@ -230,15 +230,22 @@ export async function POST(req: Request) {
       const waterSourceResult = (details.waterSourceCheck || '').toUpperCase();
       const landTypeResult = (details.landTypeCheck || '').toUpperCase();
       const waterSourceOnDoc = (details.waterSourceOn712 || '').toLowerCase();
+      // Also scan the AI's reason text — it often writes "found vhir for Khata 15268"
+      // even when it incorrectly sets waterSourceCheck to FAIL due to Khata mismatch.
+      const reasonText = (auditResult.reason || '').toLowerCase();
       const hasWell = waterSourceResult === 'PASS' || 
                       waterSourceOnDoc.includes('well') || 
                       waterSourceOnDoc.includes('vhir') ||
-                      waterSourceOnDoc.includes('vihir');
+                      waterSourceOnDoc.includes('vihir') ||
+                      reasonText.includes('vhir') ||
+                      reasonText.includes('vihir') ||
+                      reasonText.includes('well present') ||
+                      reasonText.includes('water source');
 
-      // For subsidies that require Bagayat: if a well exists, the land IS Bagayat.
-      // Auto-correct landTypeCheck = FAIL to PASS if water source is present.
+      // For subsidies that require Bagayat: if a well exists anywhere in the doc,
+      // the land IS Bagayat. Auto-correct landTypeCheck = FAIL to PASS.
       if (hasWell && requiredLandType === 'Bagayat' && landTypeResult === 'FAIL') {
-        console.log('[Phase3 Override] waterSourceCheck passed, auto-correcting landTypeCheck from FAIL to PASS');
+        console.log('[Phase3 Override] Well found in doc/reason, auto-correcting landTypeCheck FAIL → PASS');
         auditResult.extractedDetails.landTypeCheck = 'PASS';
         auditResult.extractedDetails.landType712 = 'Bagayat';
         // If the ONLY reason for rejection was LAND_TYPE_MISMATCH, flip to Verified
