@@ -89,6 +89,10 @@ export default function ClerkLayout({
             </Link>
             
             <div className="pt-6 pb-2 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('tools')}</div>
+            <Link href="/clerk/dashboard/farmer-search" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all">
+              <User size={18} />
+              Farmer Search
+            </Link>
             <Link href="#" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all">
               <FileSearch size={18} />
               {t('verify_documents')}

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
-import { uploadDocumentAction } from "@/app/actions/farmer-actions";
+import { uploadDocumentAction, saveDocumentToProfile, updateFarmerProfile } from "@/app/actions/farmer-actions";
 import { useLanguage } from "@/context/LanguageContext";
 import { LanguageSwitcherMinimal } from "@/components/LanguageSwitcher";
 
@@ -55,6 +55,10 @@ export default function UploadDocumentsPage() {
     setProfileDocs(updated);
     if (typeof window !== "undefined") {
       window.localStorage.setItem("farmer_profile_docs", JSON.stringify(updated));
+      const match = document.cookie.match(new RegExp('(^| )active_farmer_id=([^;]+)'));
+      if (match) {
+        saveDocumentToProfile(match[2], docName, url).catch(console.error);
+      }
     }
   };
 
@@ -86,6 +90,11 @@ export default function UploadDocumentsPage() {
         if (v.extractedData.caste) updatedProfile.caste = v.extractedData.caste;
         if (v.extractedData.gender) updatedProfile.gender = v.extractedData.gender;
         window.localStorage.setItem('farmer_profile_data', JSON.stringify(updatedProfile));
+
+        const match = document.cookie.match(new RegExp('(^| )active_farmer_id=([^;]+)'));
+        if (match) {
+          updateFarmerProfile(match[2], updatedProfile).catch(console.error);
+        }
       }
       if (v.overallStatus === "wrong_type" || v.overallStatus === "blurry_and_wrong_type") {
         toast.error(`Wrong document for "${docName}"`, { description: v.typeMismatchReason || `Detected: ${v.detectedDocType}` });

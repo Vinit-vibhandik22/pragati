@@ -137,3 +137,59 @@ export async function signout() {
   
   redirect('/login/official')
 }
+
+export async function farmerAadhaarLogin(prevState: any, formData: FormData) {
+  const supabase = await createClient()
+  const cookieStore = await cookies()
+
+  const fullName = formData.get('fullName') as string
+  const aadhaarNumber = formData.get('aadhaarNumber') as string
+
+  if (!fullName || !aadhaarNumber || aadhaarNumber.length !== 12) {
+    return { error: 'Valid Name and 12-digit Aadhaar Number are required.' }
+  }
+
+  // Check if profile exists
+  let { data: profile, error } = await supabase
+    .from('farmer_profiles')
+    .select('*')
+    .eq('aadhaar_number', aadhaarNumber)
+    .single()
+
+  let farmerId = profile?.farmer_id
+
+  if (!profile) {
+    // Generate new 12 digit random farmer ID
+    farmerId = Math.floor(100000000000 + Math.random() * 900000000000).toString()
+    
+    const { error: insertError } = await supabase
+      .from('farmer_profiles')
+      .insert({
+        farmer_id: farmerId,
+        farmer_name: fullName,
+        aadhaar_number: aadhaarNumber
+      })
+
+    if (insertError) {
+      console.error(insertError)
+      return { error: 'Failed to create new farmer profile.' }
+    }
+  }
+
+  // Set cookies
+  cookieStore.set('pragati_demo_session', 'true', { 
+    path: '/', 
+    maxAge: 60 * 60 * 24, 
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  })
+  
+  cookieStore.set('active_farmer_id', farmerId, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+    httpOnly: false, // allow client side to read it if needed
+  })
+
+  redirect('/farmer/dashboard/profile')
+}

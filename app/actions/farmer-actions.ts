@@ -168,3 +168,55 @@ export async function uploadDocumentAction(formData: FormData) {
     return { success: false, error: error.message };
   }
 }
+
+export async function saveDocumentToProfile(farmerId: string, docName: string, url: string) {
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('farmer_profiles')
+      .select('documents')
+      .eq('farmer_id', farmerId)
+      .single();
+
+    if (!profile) throw new Error("Farmer profile not found");
+
+    const documents = profile.documents || {};
+    documents[docName] = url;
+
+    const { error } = await supabaseAdmin
+      .from('farmer_profiles')
+      .update({ documents })
+      .eq('farmer_id', farmerId);
+
+    if (error) throw error;
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("[saveDocumentToProfile] Error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+export async function updateFarmerProfile(farmerId: string, updates: any) {
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('farmer_profiles')
+      .select('profile_data')
+      .eq('farmer_id', farmerId)
+      .single();
+
+    if (!profile) throw new Error("Farmer profile not found");
+
+    const profile_data = { ...profile.profile_data, ...updates };
+
+    const { error } = await supabaseAdmin
+      .from('farmer_profiles')
+      .update({ profile_data })
+      .eq('farmer_id', farmerId);
+
+    if (error) throw error;
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("[updateFarmerProfile] Error:", error.message);
+    return { success: false, error: error.message };
+  }
+}

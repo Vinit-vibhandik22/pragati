@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, use, useState, useEffect } from 'react'
-import { login, signup } from '../actions'
+import { login, signup, farmerAadhaarLogin } from '../actions'
 import { toast } from 'sonner'
 import { Loader2, ShieldCheck, Sprout, UserPlus } from 'lucide-react'
 
@@ -21,6 +21,24 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
 
   const handleSubmit = (formData: FormData) => {
     setClientError(null)
+
+    if (isFarmer) {
+      const fullName = formData.get('fullName')
+      const aadhaarNumber = formData.get('aadhaarNumber')
+      if (!fullName || !aadhaarNumber || (aadhaarNumber as string).length !== 12) {
+        setClientError("Please enter your name and 12-digit Aadhaar Number")
+        toast.error("Please enter your name and 12-digit Aadhaar Number")
+        return
+      }
+      farmerAadhaarLogin(null, formData).then((res) => {
+        if (res?.error) {
+          setClientError(res.error)
+          toast.error(res.error)
+        }
+      })
+      return
+    }
+
     const email = formData.get('email')
     const password = formData.get('password')
 
@@ -35,10 +53,6 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
       if (!fullName) {
         setClientError("Please enter your full name")
         return
-      }
-      // Force role to farmer if signing up here
-      if (isFarmer) {
-        formData.set('role', 'farmer')
       }
       signupAction(formData)
     } else {
@@ -91,11 +105,11 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
               </div>
             )}
 
-            {isSignUp && (
-              <div className="animate-in slide-in-from-top-2 fade-in duration-200 space-y-4">
+            {isFarmer ? (
+              <>
                 <div>
                   <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="fullName">
-                    Full Name
+                    Full Name (As per Aadhaar)
                   </label>
                   <input
                     id="fullName"
@@ -107,60 +121,94 @@ export default function LoginPage({ params }: { params: Promise<{ role: string }
                     placeholder="e.g. Tukaram Patil"
                   />
                 </div>
-
-                {!isFarmer && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="role">
-                      Official Role
-                    </label>
-                    <select
-                      id="role"
-                      name="role"
-                      required
-                      className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium appearance-none"
-                      style={{ '--tw-ring-color': themeColor } as any}
-                    >
-                      <option value="krushi_sahayak">Krushi Sahayak</option>
-                      <option value="talathi">Talathi</option>
-                      <option value="gram_sevak">Gram Sevak</option>
-                      <option value="tao">Taluka Agriculture Officer (TAO)</option>
-                    </select>
+                <div>
+                  <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="aadhaarNumber">
+                    Aadhaar Number (12 Digits)
+                  </label>
+                  <input
+                    id="aadhaarNumber"
+                    name="aadhaarNumber"
+                    type="text"
+                    required
+                    maxLength={12}
+                    pattern="\d{12}"
+                    title="Please enter exactly 12 digits"
+                    className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
+                    style={{ '--tw-ring-color': themeColor } as any}
+                    placeholder="1234 5678 9012"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {isSignUp && (
+                  <div className="animate-in slide-in-from-top-2 fade-in duration-200 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="fullName">
+                        Full Name
+                      </label>
+                      <input
+                        id="fullName"
+                        name="fullName"
+                        type="text"
+                        required
+                        className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
+                        style={{ '--tw-ring-color': themeColor } as any}
+                        placeholder="e.g. Official Name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="role">
+                        Official Role
+                      </label>
+                      <select
+                        id="role"
+                        name="role"
+                        required
+                        className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium appearance-none"
+                        style={{ '--tw-ring-color': themeColor } as any}
+                      >
+                        <option value="krushi_sahayak">Krushi Sahayak</option>
+                        <option value="talathi">Talathi</option>
+                        <option value="gram_sevak">Gram Sevak</option>
+                        <option value="tao">Taluka Agriculture Officer (TAO)</option>
+                      </select>
+                    </div>
                   </div>
                 )}
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="email">
+                    Email Address
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
+                    style={{ '--tw-ring-color': themeColor } as any}
+                    placeholder={emailPlaceholder}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="password">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    autoComplete={isSignUp ? "new-password" : "current-password"}
+                    className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
+                    style={{ '--tw-ring-color': themeColor } as any}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </>
             )}
-
-            <div>
-              <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="email">
-                Email Address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
-                style={{ '--tw-ring-color': themeColor } as any}
-                placeholder={emailPlaceholder}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-[#414844] mb-1.5 uppercase tracking-wider" htmlFor="password">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                className="w-full px-4 py-3 bg-[#f2f4f3] border-none rounded-xl focus:ring-2 transition-all outline-none text-[#191c1c] font-medium"
-                style={{ '--tw-ring-color': themeColor } as any}
-                placeholder="••••••••"
-              />
-            </div>
 
             <button
               type="submit"

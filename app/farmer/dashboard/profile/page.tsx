@@ -10,14 +10,46 @@ import { LanguageSwitcherMinimal } from "@/components/LanguageSwitcher";
 
 export default function ProfilePage() {
   const { t } = useLanguage();
-  const [formData, setFormData] = usePersistedForm("farmer_profile", {
+  const [formData, setFormData] = useState({
     aadhaar: "XXXXXXXX7181",
-    name: "Mangulkar Sameer Sandeep",
+    name: "Loading...",
     mobile: "9876543210",
     dob: "20/10/2006",
     age: "19",
     gender: "Male"
   });
+  const [farmerId, setFarmerId] = useState<string>("Loading...");
+
+  useEffect(() => {
+    async function loadProfile() {
+      // Get the farmer ID from cookies
+      const match = document.cookie.match(new RegExp('(^| )active_farmer_id=([^;]+)'));
+      if (match) {
+        const id = match[2];
+        setFarmerId(id);
+        
+        // Fetch from Supabase
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+        
+        const { data } = await supabase
+          .from('farmer_profiles')
+          .select('*')
+          .eq('farmer_id', id)
+          .single();
+          
+        if (data) {
+          setFormData(prev => ({
+            ...prev,
+            name: data.farmer_name,
+            aadhaar: data.aadhaar_number,
+            mobile: data.phone || "Not set"
+          }));
+        }
+      }
+    }
+    loadProfile();
+  }, []);
 
   const [isUpdatingMobile, setIsUpdatingMobile] = useState(false);
   const [isEditingMobile, setIsEditingMobile] = useState(false);
@@ -38,8 +70,6 @@ export default function ProfilePage() {
       setIsEditingMobile(true);
     }
   };
-
-  const generatedFarmerId = `FARMER_${(formData.name || 'FARMER').replace(/\s+/g, '_').toUpperCase()}_${(formData.aadhaar || '0000').slice(-4)}`;
 
   return (
     <div className="flex flex-col gap-8">
@@ -83,7 +113,7 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
           <EditableField 
             label={t('farmer_id_label')} 
-            value={generatedFarmerId} 
+            value={farmerId} 
             readonly 
             required 
           />
