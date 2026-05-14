@@ -111,10 +111,11 @@ export async function POST(req: Request) {
        - If the 7/12 fails the applicable water source rule, set waterSourceCheck to "FAIL" and flag as "WATER_SOURCE_MISMATCH".
      9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
         - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
+        - IMPORTANT: Check BOTH the top Form 7 summary AND the Form 12 crop details at the bottom. The MOST RECENT year in Form 12 is the final truth. If the most recent year shows "Irrigated" crops or a well ("vihir"), the land is currently Bagayat.
         - Rules based on subsidy type:
-          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
-          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
-          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
+          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT if the most recent year is Bagayat.
+          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if the most recent year is Bagayat.
+          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT ONLY if the most recent year is purely Jirayat.
           * "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": Either type acceptable, but a water source must be present.
           * "Tractor", "Implements": Either land type acceptable. No restriction.
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
