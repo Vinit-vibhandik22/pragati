@@ -97,7 +97,7 @@ RULES FOR INDIVIDUAL DOCUMENTS:
 2. Aadhaar Card: Apply Name Matching Rules. Last 4 digits must also match. Ignore land area or caste constraints for this document. If Name Check passes and digits match, mark "Verified".
 3. 7/12 Extract: 7/12 extracts often have multiple joint owners (सामायिक खातेदार). You MUST find the specific farmer whose name passes the Name Matching Rules. Then:
    a. Land Holding Check:
-      - For "Drip/Sprinkler Irrigation", their INDIVIDUAL land holding must be between 0.40 Ha and 5.0 Ha.
+      - For "Drip/Sprinkler Irrigation", "Water Supply Pipe", or "Storage Tank", their INDIVIDUAL land holding must be between 0.40 Ha and 6.0 Ha.
       - For all other subsidies, their INDIVIDUAL land holding must be between 0.20 Ha and 6.0 Ha.
       Reject if outside the applicable range.
    b. Land Type Check (Jirayat/Bagayat) — only if applicable:
@@ -112,7 +112,7 @@ ${(() => {
   return '      - No land type restriction for this subsidy.';
 })()}
    c. Mark "Verified" if all applicable checks pass, otherwise "Rejected".
-4. 8A Holding/Ledger: Apply Name Matching Rules. If the subsidy is "Drip/Sprinkler Irrigation", their total individual land area must be between 0.40 Ha and 5.0 Ha. For other subsidies, it must be between 0.20 Ha and 6.0 Ha. Mark this specific document as "Rejected" if outside the applicable range. Otherwise, if name passes, mark "Verified".
+4. 8A Holding/Ledger: Apply Name Matching Rules. If the subsidy is "Drip/Sprinkler Irrigation", "Water Supply Pipe", or "Storage Tank", their total individual land area must be between 0.40 Ha and 6.0 Ha. For other subsidies, it must be between 0.20 Ha and 6.0 Ha. Mark this specific document as "Rejected" if outside the applicable range. Otherwise, if name passes, mark "Verified".
 5. Caste Certificate: Apply Name Matching Rules. The caste must also clearly be SC (Scheduled Caste) or Nav-Boudha. If the caste is anything else, mark this specific document as "Rejected". Otherwise, if name passes, mark "Verified".
 6. Missing documents do NOT fail the documents that are already provided.
 
