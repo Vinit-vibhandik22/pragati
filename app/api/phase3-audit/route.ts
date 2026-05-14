@@ -107,6 +107,7 @@ export async function POST(req: Request) {
        - "New Well" (Navin Vihir): The 7/12 MUST NOT show any existing well. REJECT if a well is already present.
        - "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": The 7/12 MUST show an existing water source. REJECT if absent.
        - "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": These are DOWNSTREAM components that feed from an existing well or pump. The 7/12 MUST show an existing water source. REJECT with "WATER_SOURCE_MISMATCH" if no water source is present.
+       - "Tractor", "Implements": No water source restriction. Set waterSourceCheck to "NOT_APPLICABLE".
        - If the 7/12 fails the applicable water source rule, set waterSourceCheck to "FAIL" and flag as "WATER_SOURCE_MISMATCH".
      9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
         - The 7/12 extract shows land type as "Jirayat" (Dryland / rain-fed) or "Bagayat" (Irrigated).
@@ -114,7 +115,8 @@ export async function POST(req: Request) {
           * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT.
           * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Bagayat.
           * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT if Jirayat.
-          * "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": NO land type restriction. Set landTypeCheck to "NOT_APPLICABLE".
+          * "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": Either type acceptable, but a water source must be present.
+          * "Tractor", "Implements": Either land type acceptable. No restriction.
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
 
     APPLICABILITY FOR THIS APPLICATION:

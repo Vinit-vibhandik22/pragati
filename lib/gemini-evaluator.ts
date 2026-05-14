@@ -101,9 +101,9 @@ RULES FOR INDIVIDUAL DOCUMENTS:
 ${(() => {
   const s = (farmerDetails.subsidy_reason || '').toLowerCase();
   // Only original well/pump/pond components have a Jirayat/Bagayat restriction.
-  // Drip/Sprinkler, Water Supply Pipe, Storage Tank: NO land type restriction.
+  // Drip/Sprinkler, Water Supply Pipe, Storage Tank, Tractor, Implements: NO land type restriction.
   const needsLandTypeCheck = /new well|navin vihir|old well|juni vihir|boring|pump set|electricity connection|farm pond|plastic lining/i.test(s);
-  if (!needsLandTypeCheck) return '      - Land type check is NOT APPLICABLE for this subsidy (Drip/Sprinkler Irrigation, Water Supply Pipe, and Storage Tank/Sump have no Jirayat/Bagayat restriction). Do not reject based on land type. NOTE: These are downstream components — verify an existing water source is present on the 7/12.';
+  if (!needsLandTypeCheck) return '      - Land type check is NOT APPLICABLE for this subsidy (Drip/Sprinkler Irrigation, Water Supply Pipe, Storage Tank/Sump, Tractor, Implements have no Jirayat/Bagayat restriction). Do not reject based on land type.';
   if (/new well|navin vihir|farm pond|plastic lining/i.test(s)) return '      - Land MUST be Jirayat. Reject if Bagayat.';
   if (/old well|juni vihir|boring|pump set|electricity connection/i.test(s)) return '      - Land MUST be Bagayat. Reject if Jirayat.';
   return '      - No land type restriction for this subsidy.';
