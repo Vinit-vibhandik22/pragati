@@ -15,11 +15,13 @@ import {
   MessageSquare,
   CreditCard,
   Menu,
-  X
+  X,
+  Globe
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function FarmerDashboardLayout({
   children,
@@ -27,7 +29,8 @@ export default function FarmerDashboardLayout({
   children: React.ReactNode;
 }) {
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
-  const [lang, setLang] = React.useState<"EN" | "MR">("EN");
+  const { language, setLanguage } = useLanguage();
+  const lang = language === 'mr' ? "MR" : "EN";
   const pathname = usePathname();
 
   const menuItems = [
@@ -85,6 +88,13 @@ export default function FarmerDashboardLayout({
               </div>
 
               <div className="flex items-center gap-3 md:gap-6">
+                <button 
+                  onClick={() => setLanguage(language === 'en' ? 'mr' : 'en')}
+                  className="text-white flex items-center gap-1 font-bold text-xs hover:opacity-80 bg-white/20 px-3 py-1.5 rounded-full"
+                >
+                  <Globe size={14} />
+                  <span className="hidden md:inline">{language === 'en' ? 'मराठी' : 'English'}</span>
+                </button>
                 <div className="text-white cursor-pointer hover:opacity-80">
                   <Settings size={18} />
                 </div>

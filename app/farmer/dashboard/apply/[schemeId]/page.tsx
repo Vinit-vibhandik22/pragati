@@ -22,6 +22,7 @@ import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { processDocumentAudit, uploadDocumentAction } from "@/app/actions/farmer-actions";
+import { useLanguage } from "@/context/LanguageContext";
 
 const SCHEMES_DATA: Record<string, any> = {
   "ambedkar-yojana": {
@@ -51,7 +52,8 @@ export default function SchemeApplicationPage() {
   const [uploadStatus, setUploadStatus] = useState<Record<string, "idle" | "uploading" | "success" | "error">>({}); 
   const [uploadedUrls, setUploadedUrls] = useState<Record<string, string>>({});
   const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
-  const [lang, setLang] = useState<"EN" | "MR">("EN");
+  const { language } = useLanguage();
+  const lang = language === 'mr' ? "MR" : "EN";
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [validationStatuses, setValidationStatuses] = useState<Record<string, ValidationStatus>>({});
   const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
@@ -279,13 +281,6 @@ export default function SchemeApplicationPage() {
             <p className="text-xs text-gray-400">{lang === "EN" ? "Direct Real-time Supabase Integration" : "थेट रिअल-टाइम सुपाबेस एकत्रीकरण"}</p>
           </div>
         </div>
-        <button 
-          onClick={() => setLang(lang === "EN" ? "MR" : "EN")}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-xs font-bold transition-all border border-gray-200"
-        >
-          <Globe size={14} className="text-[#1B4332]" />
-          {lang === "EN" ? "मराठी" : "English"}
-        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

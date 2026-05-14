@@ -14,6 +14,7 @@ import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import { uploadDocumentAction } from "@/app/actions/farmer-actions";
 import { useLanguage } from "@/context/LanguageContext";
+import { LanguageSwitcherMinimal } from "@/components/LanguageSwitcher";
 
 const STANDARD_DOCS = [
   "7/12 Extract",
@@ -109,6 +110,7 @@ export default function UploadDocumentsPage() {
               : "तुमची कागदपत्रे एकदाच अपलोड करा आणि योजनांच्या अर्जांसाठी ती पुन्हा वापरा."}
           </p>
         </div>
+        <LanguageSwitcherMinimal />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
