@@ -35,7 +35,8 @@ const DOC_TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 
 export default function UploadDocumentsPage() {
-  const { lang, t } = useLanguage();
+  const { language, t } = useLanguage();
+  const lang = language === 'en' ? 'EN' : 'MR';
   
   // Local state to track newly selected files before uploading
   const [files, setFiles] = useState<Record<string, File | null>>({});

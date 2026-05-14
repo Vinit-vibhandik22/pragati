@@ -178,7 +178,7 @@ export default function DocumentUploadPage() {
                   <Upload className="text-gray-400 mb-2 group-hover:text-blue-500 transition-colors" size={24} />
                   <span className="text-[10px] font-bold text-gray-600 uppercase">Upload File</span>
                   <input 
-                    ref={(el) => (fileInputRefs.current[doc.id] = el)}
+                    ref={(el) => { fileInputRefs.current[doc.id] = el; }}
                     type="file" 
                     className="hidden" 
                     accept="image/*,application/pdf"
@@ -194,7 +194,7 @@ export default function DocumentUploadPage() {
                   <div className="text-2xl mb-1 group-hover:scale-110 transition-transform">📷</div>
                   <span className="text-[10px] font-bold text-gray-600 uppercase text-center">Scan / स्कॅन करा</span>
                   <input 
-                    ref={(el) => (cameraInputRefs.current[doc.id] = el)}
+                    ref={(el) => { cameraInputRefs.current[doc.id] = el; }}
                     type="file" 
                     className="hidden" 
                     accept="image/*"

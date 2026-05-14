@@ -4,12 +4,14 @@ import React, { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { LanguageSwitcherMinimal } from "@/components/LanguageSwitcher";
 import { FarmerProfile } from "@/types";
-import { preFilterSchemes, Scheme, MissingInfoScheme } from "@/lib/schemes";
+import { preFilterSchemes, MissingInfoScheme } from "@/lib/schemes";
+import type { Scheme } from "@/types";
 import { ShieldCheck, Info, ArrowRight, AlertCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 export default function SchemesEligibilityPage() {
-  const { lang, t } = useLanguage();
+  const { language, t } = useLanguage();
+  const lang = language === 'en' ? 'EN' : 'MR';
   const [profile, setProfile] = useState<FarmerProfile>({ name: "Farmer", district: "Unknown" });
   const [eligibleSchemes, setEligibleSchemes] = useState<Scheme[]>([]);
   const [missingInfoSchemes, setMissingInfoSchemes] = useState<MissingInfoScheme[]>([]);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { User, Phone, Check, Loader2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { usePersistedForm } from "@/lib/usePersistedForm";
