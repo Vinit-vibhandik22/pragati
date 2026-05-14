@@ -63,6 +63,30 @@ export default function UploadDocumentsPage() {
     }
   };
 
+  const [farmerIdentity, setFarmerIdentity] = useState<{name: string, aadhaar: string} | null>(null);
+
+  React.useEffect(() => {
+    async function loadIdentity() {
+      const match = document.cookie.match(new RegExp('(^| )active_farmer_id=([^;]+)'));
+      if (match) {
+        const id = match[2];
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+        
+        const { data } = await supabase
+          .from('farmer_profiles')
+          .select('farmer_name, aadhaar_number')
+          .eq('farmer_id', id)
+          .single();
+          
+        if (data) {
+          setFarmerIdentity({ name: data.farmer_name, aadhaar: data.aadhaar_number });
+        }
+      }
+    }
+    loadIdentity();
+  }, []);
+
   const [validationStatuses, setValidationStatuses] = useState<Record<string, "idle" | "validating" | "clean" | "blurry" | "wrong_type" | "blurry_and_wrong_type" | "error">>({});
   const [validationResults, setValidationResults] = useState<Record<string, { feedback: string; detectedDocType?: string; blurDescription?: string | null; typeMismatchReason?: string | null; }>>({});
 
@@ -73,6 +97,10 @@ export default function UploadDocumentsPage() {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('expectedDocType', docName);
+      if (farmerIdentity) {
+        fd.append('expectedName', farmerIdentity.name);
+        fd.append('expectedAadhaar', farmerIdentity.aadhaar);
+      }
       const res = await fetch('/api/validate-document', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok || !data.success) {

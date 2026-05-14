@@ -26,6 +26,8 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const expectedDocType = formData.get('expectedDocType') as string;
+    const expectedName = formData.get('expectedName') as string | null;
+    const expectedAadhaar = formData.get('expectedAadhaar') as string | null;
 
     if (!file || !expectedDocType) {
       return NextResponse.json({ error: 'Missing file or expectedDocType.' }, { status: 400 });
@@ -81,8 +83,20 @@ Determine if the detected document type matches the expected type. Be strict but
 - A 7/12 Extract for a "7/12 Extract" slot = CORRECT
 - A photo of a blank paper or completely illegible scan = WRONG TYPE
 
+${expectedName && expectedAadhaar ? `
 ---
-PART 3 — DATA EXTRACTION
+PART 3 — IDENTITY VERIFICATION
+The user's registered identity is:
+Name: "${expectedName}"
+Aadhaar Number: "${expectedAadhaar}"
+
+If the detected document is an "Aadhaar Card", you MUST verify that the Name and Aadhaar Number on the card match the registered identity.
+- Minor spelling variations in name are acceptable.
+- If the Aadhaar Number is completely different OR the Name is clearly a different person, set "isCorrectType" to false, "overallStatus" to "wrong_type", and "typeMismatchReason" to "Name or Aadhaar number does not match registered profile. Please upload the correct Aadhaar card."
+` : ''}
+
+---
+PART 4 — DATA EXTRACTION
 Extract key metadata from the document to build the farmer's profile for the eligibility engine. 
 - If the document is an "8A Holding" or "7/12 Extract", try to extract the land size in hectares. Return it as a number (e.g., 1.5).
 - If the document is a "Caste Certificate", extract the caste category (e.g., "SC", "ST", "Nav-Boudha", "OBC", "Open").
