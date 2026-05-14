@@ -2,15 +2,93 @@ import type { Scheme, FarmerProfile } from '@/types'
 
 export const SCHEMES: Scheme[] = [
   {
+    id: 'ambedkar-yojana',
+    name: 'Dr. Babasaheb Ambedkar Krushi Swavalamban Yojana (BAKSY)',
+    nameMarathi: 'डॉ. बाबासाहेब आंबेडकर कृषी स्वावलंबन योजना',
+    benefit: 'Subsidy for wells, pump sets, and irrigation',
+    benefitAmount: 'Up to Rs. 2.5 Lakhs (varies by component)',
+    eligibility: {
+      minLandHectares: 0.20,
+      maxLandHectares: 6.0,
+      castes: ['SC', 'Nav-Boudha']
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding', 'Caste Certificate'],
+    department: 'Agriculture Department'
+  },
+  {
+    id: 'pmksy-micro-irrigation',
+    name: 'PMKSY - Per Drop More Crop (Micro Irrigation)',
+    nameMarathi: 'प्रधानमंत्री कृषी सिंचन योजना - सूक्ष्म सिंचन',
+    benefit: 'Drip/Sprinkler irrigation subsidy',
+    benefitAmount: '45% to 55% subsidy (up to Rs. 1 Lakh)',
+    eligibility: {
+      minLandHectares: 0.40,
+      maxLandHectares: 5.0
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding', 'Bank Passbook Copy'],
+    department: 'Agriculture Department'
+  },
+  {
+    id: 'state-agri-mech',
+    name: 'State Agricultural Mechanization Scheme',
+    nameMarathi: 'राज्य कृषी यांत्रिकीकरण योजना',
+    benefit: 'Subsidy on Tractors & Implements',
+    benefitAmount: 'Up to 50% subsidy',
+    eligibility: {
+      minLandHectares: 0.40
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding', 'Bank Passbook Copy'],
+    department: 'Agriculture Department'
+  },
+  {
+    id: 'bhausaheb-fundkar',
+    name: 'Bhausaheb Fundkar Orchard Planting Scheme',
+    nameMarathi: 'भाऊसाहेब फुंडकर फळबाग लागवड योजना',
+    benefit: '100% subsidy for planting fruit orchards',
+    benefitAmount: 'Variable by crop (100% subsidy)',
+    eligibility: {
+      minLandHectares: 0.20,
+      maxLandHectares: 6.0
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding'],
+    department: 'Horticulture Department'
+  },
+  {
+    id: 'birsa-munda',
+    name: 'Birsa Munda Krishi Kranti Yojana',
+    nameMarathi: 'बिरसा मुंडा कृषी क्रांती योजना',
+    benefit: 'Subsidy for wells, pump sets for ST farmers',
+    benefitAmount: 'Up to Rs. 2.5 Lakhs',
+    eligibility: {
+      minLandHectares: 0.20,
+      maxLandHectares: 6.0,
+      castes: ['ST']
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding', 'Caste Certificate'],
+    department: 'Agriculture Department'
+  },
+  {
+    id: 'magel-tyala-shet-tale',
+    name: 'Magel Tyala Shet Tale',
+    nameMarathi: 'मागेल त्याला शेततळे',
+    benefit: 'Subsidy for constructing Farm Ponds',
+    benefitAmount: 'Rs. 50,000 fixed subsidy',
+    eligibility: {
+      minLandHectares: 0.60
+    },
+    requiredDocs: ['Aadhaar', 'Land Record (7/12)', '8A Holding'],
+    department: 'Agriculture Department'
+  },
+  {
     id: 'pm-kisan',
-    name: 'PM-KISAN',
-    nameMarathi: 'पीएम-किसान',
+    name: 'PM-KISAN Samman Nidhi',
+    nameMarathi: 'पीएम-किसान सन्मान निधी',
     benefit: 'Income support',
     benefitAmount: 'Rs. 6,000/yr',
     eligibility: {
-      maxLandAcres: 5, // Actually 2 hectares (~5 acres) for small/marginal
+      maxLandHectares: 2.0
     },
-    requiredDocs: ['Aadhaar', 'Bank Passbook', 'Land Record (7/12)'],
+    requiredDocs: ['Aadhaar', 'Bank Passbook Copy', 'Land Record (7/12)'],
     department: 'Subsidy Department'
   },
   {
@@ -22,177 +100,99 @@ export const SCHEMES: Scheme[] = [
     eligibility: {
       states: ['Maharashtra']
     },
-    requiredDocs: ['Aadhaar', 'Bank Passbook', 'PM-KISAN Registration'],
+    requiredDocs: ['Aadhaar', 'Bank Passbook Copy', 'Land Record (7/12)'],
     department: 'Subsidy Department'
-  },
-  {
-    id: 'pmfby',
-    name: 'Pradhan Mantri Fasal Bima Yojana (PMFBY)',
-    nameMarathi: 'प्रधानमंत्री पीक विमा योजना',
-    benefit: 'Crop insurance',
-    benefitAmount: 'Varies by crop loss',
-    eligibility: {
-      requiresKCC: true
-    },
-    requiredDocs: ['Aadhaar', 'Bank Passbook', 'Land Record (7/12)', 'Crop Sowing Certificate'],
-    department: 'Insurance Cell'
-  },
-  {
-    id: 'per-drop-more-crop',
-    name: 'Per Drop More Crop',
-    nameMarathi: 'प्रति थेंब अधिक पीक',
-    benefit: 'Irrigation equipment subsidy',
-    benefitAmount: '50-55% subsidy',
-    eligibility: {
-      irrigationTypes: ['rainfed', 'well', 'canal']
-    },
-    requiredDocs: ['Aadhaar', 'Land Record (7/12)'],
-    department: 'Subsidy Department'
-  },
-  {
-    id: 'shc',
-    name: 'Soil Health Card Scheme',
-    nameMarathi: 'मृदा आरोग्य पत्रिका योजना',
-    benefit: 'Free soil testing',
-    benefitAmount: 'Free',
-    eligibility: {},
-    requiredDocs: ['Aadhaar', 'Land Record (7/12)'],
-    department: 'General'
-  },
-  {
-    id: 'kcc',
-    name: 'Kisan Credit Card',
-    nameMarathi: 'किसान क्रेडिट कार्ड',
-    benefit: 'Revolving credit',
-    benefitAmount: 'Up to Rs. 3 Lakhs at 4%',
-    eligibility: {},
-    requiredDocs: ['Aadhaar', 'PAN Card', 'Land Record (7/12)', 'Passport Photo'],
-    department: 'Scheme Registration'
-  },
-  {
-    id: 'aif',
-    name: 'Agri Infrastructure Fund',
-    nameMarathi: 'कृषी पायाभूत सुविधा निधी',
-    benefit: 'Interest subvention',
-    benefitAmount: '3% subvention',
-    eligibility: {},
-    requiredDocs: ['Aadhaar', 'DPR (Detailed Project Report)', 'Bank Loan Sanction'],
-    department: 'Scheme Registration'
-  },
-  {
-    id: 'nmeo',
-    name: 'National Mission on Edible Oils',
-    nameMarathi: 'राष्ट्रीय खाद्य तेल अभियान',
-    benefit: 'Grant for oilseed cultivation',
-    benefitAmount: 'Rs. 10,000/acre/yr',
-    eligibility: {
-      crops: ['Soyabean', 'Groundnut', 'Sunflower', 'Safflower']
-    },
-    requiredDocs: ['Aadhaar', 'Land Record (7/12)', 'Bank Passbook'],
-    department: 'Subsidy Department'
-  },
-  {
-    id: 'pm-kmy',
-    name: 'PM Kisan Maandhan Yojana',
-    nameMarathi: 'पीएम किसान मानधन योजना',
-    benefit: 'Pension after age 60',
-    benefitAmount: 'Rs. 3,000/month',
-    eligibility: {
-      minAge: 18,
-      maxAge: 40,
-      maxLandAcres: 5
-    },
-    requiredDocs: ['Aadhaar', 'Bank Passbook'],
-    department: 'Scheme Registration'
-  },
-  {
-    id: 'rkvy',
-    name: 'Rashtriya Krishi Vikas Yojana',
-    nameMarathi: 'राष्ट्रीय कृषी विकास योजना',
-    benefit: 'Grants for agri infra',
-    benefitAmount: 'Project-based',
-    eligibility: {},
-    requiredDocs: ['Aadhaar', 'Project Proposal', 'Land Record (7/12)'],
-    department: 'Scheme Registration'
   }
 ]
 
-/**
- * Pre-filter schemes based on hard eligibility rules.
- * 
- * Design principle: If the profile is MISSING a field that a scheme requires,
- * we INCLUDE the scheme (let Claude reason about it with "medium" confidence).
- * We only EXCLUDE if we have definitive evidence of ineligibility.
- * 
- * Returns: { eligible: Scheme[], excluded: ExcludedScheme[] }
- */
 export interface ExcludedScheme {
   id: string
   name: string
   reason: string
 }
 
+export interface MissingInfoScheme {
+  id: string
+  name: string
+  missingData: string[]
+  missingDocs: string[]
+}
+
 export interface PreFilterResult {
   eligible: Scheme[]
   excluded: ExcludedScheme[]
+  missingInfo: MissingInfoScheme[]
 }
 
 export function preFilterSchemes(profile: FarmerProfile): PreFilterResult {
   const eligible: Scheme[] = []
   const excluded: ExcludedScheme[] = []
+  const missingInfo: MissingInfoScheme[] = []
 
   for (const scheme of SCHEMES) {
     const { eligibility } = scheme
-    let reason: string | null = null
+    let isExcluded = false
+    let reason = ''
+    const missingFields: string[] = []
+    const missingDocSet = new Set<string>()
 
-    // Land size checks — only exclude if we HAVE the data and it fails
-    if (eligibility.maxLandAcres && profile.landSize !== undefined && profile.landSize > eligibility.maxLandAcres) {
-      reason = `Land size ${profile.landSize} acres exceeds max ${eligibility.maxLandAcres} acres`
-    }
-    if (eligibility.minLandAcres && profile.landSize !== undefined && profile.landSize < eligibility.minLandAcres) {
-      reason = `Land size ${profile.landSize} acres below min ${eligibility.minLandAcres} acres`
-    }
-
-    // Age checks
-    if (eligibility.minAge && profile.age !== undefined && profile.age < eligibility.minAge) {
-      reason = `Age ${profile.age} below minimum ${eligibility.minAge}`
-    }
-    if (eligibility.maxAge && profile.age !== undefined && profile.age > eligibility.maxAge) {
-      reason = `Age ${profile.age} above maximum ${eligibility.maxAge}`
-    }
-
-    // Boolean prerequisite checks — only exclude if explicitly false
-    if (eligibility.requiresKCC && profile.hasKCC === false) {
-      reason = 'Requires Kisan Credit Card (KCC)'
-    }
-    if (eligibility.requiresSHC && profile.hasSHC === false) {
-      reason = 'Requires Soil Health Card (SHC)'
+    // Check Land Hectares
+    if (eligibility.maxLandHectares) {
+      if (profile.landSizeHectares !== undefined) {
+        if (profile.landSizeHectares > eligibility.maxLandHectares) {
+          isExcluded = true
+          reason = `Land size (${profile.landSizeHectares} Ha) exceeds maximum allowed (${eligibility.maxLandHectares} Ha).`
+        }
+      } else {
+        missingFields.push('Land Size (Ha)')
+        missingDocSet.add('7/12 Extract')
+        missingDocSet.add('8A Holding')
+      }
     }
 
-    // Crop checks — only exclude if profile HAS a crop and it doesn't match
-    if (eligibility.crops && profile.primaryCrop && !eligibility.crops.includes(profile.primaryCrop)) {
-      reason = `Crop "${profile.primaryCrop}" not in eligible list: ${eligibility.crops.join(', ')}`
+    if (eligibility.minLandHectares && !isExcluded) {
+      if (profile.landSizeHectares !== undefined) {
+        if (profile.landSizeHectares < eligibility.minLandHectares) {
+          isExcluded = true
+          reason = `Land size (${profile.landSizeHectares} Ha) is below minimum required (${eligibility.minLandHectares} Ha).`
+        }
+      } else {
+        missingFields.push('Land Size (Ha)')
+        missingDocSet.add('7/12 Extract')
+        missingDocSet.add('8A Holding')
+      }
     }
 
-    // Irrigation checks — only exclude if profile HAS irrigation type and it doesn't match
-    if (eligibility.irrigationTypes && profile.irrigationType && !eligibility.irrigationTypes.includes(profile.irrigationType)) {
-      reason = `Irrigation type "${profile.irrigationType}" not eligible`
+    // Check Castes
+    if (eligibility.castes && !isExcluded) {
+      if (profile.caste) {
+        if (!eligibility.castes.includes(profile.caste)) {
+          isExcluded = true
+          reason = `Scheme is only for ${eligibility.castes.join(', ')} categories. Detected caste: ${profile.caste}.`
+        }
+      } else {
+        missingFields.push('Caste Category')
+        missingDocSet.add('Caste Certificate')
+      }
     }
 
-    if (reason) {
+    if (isExcluded) {
       excluded.push({ id: scheme.id, name: scheme.name, reason })
+    } else if (missingFields.length > 0) {
+      missingInfo.push({
+        id: scheme.id,
+        name: scheme.name,
+        missingData: missingFields,
+        missingDocs: Array.from(missingDocSet)
+      })
     } else {
       eligible.push(scheme)
     }
   }
 
-  return { eligible, excluded }
+  return { eligible, excluded, missingInfo }
 }
 
-/**
- * Quick count of how many schemes a profile might be eligible for.
- * Useful for distress scoring and dashboard summaries.
- */
 export function countEligibleSchemes(profile: FarmerProfile): number {
   return preFilterSchemes(profile).eligible.length
 }

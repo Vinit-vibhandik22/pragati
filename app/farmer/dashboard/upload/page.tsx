@@ -78,6 +78,15 @@ export default function UploadDocumentsPage() {
       const v = data.validation;
       setValidationStatuses(prev => ({ ...prev, [docName]: v.overallStatus }));
       setValidationResults(prev => ({ ...prev, [docName]: { feedback: v.feedback, detectedDocType: v.detectedDocType, blurDescription: v.blurDescription, typeMismatchReason: v.typeMismatchReason } }));
+      
+      if (v.extractedData && typeof window !== 'undefined') {
+        const storedProfile = JSON.parse(window.localStorage.getItem('farmer_profile_data') || '{}');
+        const updatedProfile = { ...storedProfile };
+        if (v.extractedData.landSizeHectares) updatedProfile.landSizeHectares = v.extractedData.landSizeHectares;
+        if (v.extractedData.caste) updatedProfile.caste = v.extractedData.caste;
+        if (v.extractedData.gender) updatedProfile.gender = v.extractedData.gender;
+        window.localStorage.setItem('farmer_profile_data', JSON.stringify(updatedProfile));
+      }
       if (v.overallStatus === "wrong_type" || v.overallStatus === "blurry_and_wrong_type") {
         toast.error(`Wrong document for "${docName}"`, { description: v.typeMismatchReason || `Detected: ${v.detectedDocType}` });
       } else if (v.overallStatus === "blurry") {

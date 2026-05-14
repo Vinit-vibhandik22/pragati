@@ -82,8 +82,11 @@ export interface Scheme {
   eligibility: {
     maxLandAcres?: number
     minLandAcres?: number
+    maxLandHectares?: number
+    minLandHectares?: number
     states?: string[]
     categories?: string[]
+    castes?: string[]
     crops?: string[]
     maxIncomeCategory?: string
     irrigationTypes?: string[]
@@ -197,9 +200,11 @@ export interface FarmerProfile {
   district: string
   taluka?: string
   landSize?: number // in acres
+  landSizeHectares?: number // in hectares
   primaryCrop?: string
   irrigationType?: string
   category?: string // General, OBC, SC, ST
+  caste?: string // SC, ST, Nav-Boudha, Open
   incomeCategory?: string
   hasKCC?: boolean
   hasSHC?: boolean

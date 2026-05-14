@@ -81,6 +81,14 @@ Determine if the detected document type matches the expected type. Be strict but
 - A 7/12 Extract for a "7/12 Extract" slot = CORRECT
 - A photo of a blank paper or completely illegible scan = WRONG TYPE
 
+---
+PART 3 — DATA EXTRACTION
+Extract key metadata from the document to build the farmer's profile for the eligibility engine. 
+- If the document is an "8A Holding" or "7/12 Extract", try to extract the land size in hectares. Return it as a number (e.g., 1.5).
+- If the document is a "Caste Certificate", extract the caste category (e.g., "SC", "ST", "Nav-Boudha", "OBC", "Open").
+- If the document is an "Aadhaar Card", extract the gender (e.g., "Male", "Female").
+If the document does not contain this information, return null for those fields.
+
 Return ONLY valid JSON with no markdown, no explanation outside the JSON:
 {
   "isBlurry": true or false,
@@ -88,8 +96,13 @@ Return ONLY valid JSON with no markdown, no explanation outside the JSON:
   "detectedDocType": "the document type you identified from the image",
   "isCorrectType": true or false,
   "typeMismatchReason": "short explanation if wrong type was uploaded, or null if correct",
-  "overallStatus": "clean" or "blurry" or "wrong_type" or "blurry_and_wrong_type",
-  "feedback": "One concise, helpful, farmer-friendly sentence summarizing the check result"
+  "overallStatus": "clean" | "blurry" | "wrong_type" | "blurry_and_wrong_type",
+  "feedback": "One concise, helpful, farmer-friendly sentence summarizing the check result",
+  "extractedData": {
+    "landSizeHectares": number | null,
+    "caste": string | null,
+    "gender": string | null
+  }
 }`;
 
     const result = await model.generateContent([
@@ -125,9 +138,10 @@ Return ONLY valid JSON with no markdown, no explanation outside the JSON:
         ? validation.overallStatus
         : 'clean',
       feedback: validation.feedback || 'Document checked.',
+      extractedData: validation.extractedData || null
     };
 
-    console.log(`[validate-document] Result: ${sanitized.overallStatus} | Detected: ${sanitized.detectedDocType}`);
+    console.log(`[validate-document] Result: ${sanitized.overallStatus} | Detected: ${sanitized.detectedDocType} | Data:`, sanitized.extractedData);
     return NextResponse.json({ success: true, validation: sanitized });
 
   } catch (error: any) {

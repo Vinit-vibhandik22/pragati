@@ -16,7 +16,8 @@ import {
   CreditCard,
   Menu,
   X,
-  Globe
+  Globe,
+  ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -39,6 +40,7 @@ export default function FarmerDashboardLayout({
     { label: { EN: "Land Details", MR: "जमिनीचा तपशील" }, icon: <Map size={18} />, href: "/farmer/dashboard/land" },
     { label: { EN: "View Component History", MR: "घटकाचा इतिहास पहा" }, icon: <History size={18} />, href: "/farmer/dashboard/history" },
     { label: { EN: "Upload Documents", MR: "कागदपत्रे अपलोड करा" }, icon: <Upload size={18} />, href: "/farmer/dashboard/upload" },
+    { label: { EN: "Scheme Eligibility", MR: "योजना पात्रता" }, icon: <ShieldCheck size={18} />, href: "/farmer/dashboard/schemes" },
     { label: { EN: "Grievance/Suggestions", MR: "तक्रार/सूचना" }, icon: <MessageSquare size={18} />, href: "/farmer/dashboard/grievance" },
     { label: { EN: "Bank Details Update", MR: "बँक तपशील अपडेट" }, icon: <CreditCard size={18} />, href: "/farmer/dashboard/bank" },
   ];
@@ -120,7 +122,7 @@ export default function FarmerDashboardLayout({
             </div>
             {menuItems.map((item) => {
               const isActive = pathname === item.href;
-              const isLocked = item.href === "#" || !["/farmer/dashboard/profile", "/farmer/dashboard/apply", "/farmer/dashboard/bank", "/farmer/dashboard/history", "/farmer/dashboard/upload"].some(p => item.href.startsWith(p));
+              const isLocked = item.href === "#" || !["/farmer/dashboard/profile", "/farmer/dashboard/apply", "/farmer/dashboard/bank", "/farmer/dashboard/history", "/farmer/dashboard/upload", "/farmer/dashboard/schemes"].some(p => item.href.startsWith(p));
               
               const content = (
                 <>
