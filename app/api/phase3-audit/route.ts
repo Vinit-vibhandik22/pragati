@@ -78,7 +78,7 @@ export async function POST(req: Request) {
 
     const landTypeNote = !needsLandTypeCheck
       ? `Rule 10 (Land Type Check) is NOT APPLICABLE for this subsidy. Set landTypeCheck to "NOT_APPLICABLE". Do not show or penalise for Jirayat/Bagayat.`
-      : `Rule 10: For this subsidy, land MUST be ${requiredLandType}. If the 7/12 shows a different land type, set landTypeCheck to "FAIL" and flag as LAND_TYPE_MISMATCH.`;
+      : `Rule 10: For this subsidy, land MUST be ${requiredLandType}. Remember the CRITICAL OVERRIDE: Check the Form 12 crop details at the bottom. If the 7/12 top summary shows a different land type, but the most recent Form 12 data matches ${requiredLandType}, set landTypeCheck to "PASS". Only set to "FAIL" if both the top summary and Form 12 fail to show ${requiredLandType}.`;
 
     const prompt = `
     You are Pragati AI, an expert agricultural subsidy auditor for the Government of Maharashtra.
