@@ -113,11 +113,11 @@ export async function POST(req: Request) {
         - CRITICAL OVERRIDE: The top 'Area, Unit & Assessment' box is often outdated. Do not trust it blindly.
         - You MUST look at the 'Village namuna bara (pikanchi nondavhi)' (Form 12) table at the bottom of the page. 
         - Look at the columns 'Irrigated' and 'Irrigation Equipment' for the MOST RECENT year (e.g. 2025-26).
-        - If the most recent year shows ANY crop area under 'Irrigated' (e.g., 1.0000, 1.5400) OR lists a well ('vihir') under equipment, you MUST classify the land as Bagayat (Irrigated), even if the top box says Non-Irrigated 6.05.00.
+        - If you see ANY numbers in the 'Irrigated' column (like 1.0000 or 1.5400) or ANY mention of a well (vhir, vihir, well) in the Form 12 table, you MUST classify the land as Bagayat (Irrigated). Do NOT say it is Non-irrigated.
         - Rules based on subsidy type:
-          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT if the most recent year is Bagayat.
-          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if the most recent year is Bagayat.
-          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT ONLY if the most recent year is purely Jirayat.
+          * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT if Form 12 shows Bagayat.
+          * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Form 12 shows Bagayat.
+          * "Old Well Repair", "In-well Boring", "Pump Set", "Electricity Connection": Land MUST be Bagayat -- REJECT ONLY if Form 12 is purely Non-Irrigated.
           * "Drip/Sprinkler Irrigation", "Water Supply Pipe", "Storage Tank/Sump": Either type acceptable, but a water source must be present.
           * "Tractor", "Implements": Either land type acceptable. No restriction.
         - If land type does not match requirements, set landTypeCheck to "FAIL" and flag as "LAND_TYPE_MISMATCH".
