@@ -209,7 +209,7 @@ export async function updateFarmerProfile(farmerId: string, updates: any) {
 
     const { error } = await supabaseAdmin
       .from('farmer_profiles')
-      .update({ profile_data })
+      .update({ profile_data, ...(updates.name && { farmer_name: updates.name }), ...(updates.aadhaarNumber && { aadhaar_number: updates.aadhaarNumber }) })
       .eq('farmer_id', farmerId);
 
     if (error) throw error;

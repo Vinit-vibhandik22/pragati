@@ -90,6 +90,11 @@ export default function UploadDocumentsPage() {
         if (v.extractedData.landSizeHectares) updatedProfile.landSizeHectares = v.extractedData.landSizeHectares;
         if (v.extractedData.caste) updatedProfile.caste = v.extractedData.caste;
         if (v.extractedData.gender) updatedProfile.gender = v.extractedData.gender;
+        if (v.extractedData.dob) updatedProfile.dob = v.extractedData.dob;
+        if (v.extractedData.age) updatedProfile.age = v.extractedData.age;
+        if (v.extractedData.address) updatedProfile.address = v.extractedData.address;
+        if (v.extractedData.name) updatedProfile.name = v.extractedData.name;
+        if (v.extractedData.aadhaarNumber) updatedProfile.aadhaarNumber = v.extractedData.aadhaarNumber;
         window.localStorage.setItem('farmer_profile_data', JSON.stringify(updatedProfile));
 
         const match = document.cookie.match(new RegExp('(^| )active_farmer_id=([^;]+)'));

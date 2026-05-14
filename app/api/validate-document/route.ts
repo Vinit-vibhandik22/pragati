@@ -86,7 +86,13 @@ PART 3 — DATA EXTRACTION
 Extract key metadata from the document to build the farmer's profile for the eligibility engine. 
 - If the document is an "8A Holding" or "7/12 Extract", try to extract the land size in hectares. Return it as a number (e.g., 1.5).
 - If the document is a "Caste Certificate", extract the caste category (e.g., "SC", "ST", "Nav-Boudha", "OBC", "Open").
-- If the document is an "Aadhaar Card", extract the gender (e.g., "Male", "Female").
+- If the document is an "Aadhaar Card", extract the following:
+  - "gender" (e.g., "Male", "Female")
+  - "dob" (Date of birth, e.g., "20/10/2006")
+  - "age" (Calculate age from DOB, return as number)
+  - "address" (Full address)
+  - "name" (Full name of the person)
+  - "aadhaarNumber" (12-digit Aadhaar number)
 If the document does not contain this information, return null for those fields.
 
 Return ONLY valid JSON with no markdown, no explanation outside the JSON:
@@ -101,7 +107,12 @@ Return ONLY valid JSON with no markdown, no explanation outside the JSON:
   "extractedData": {
     "landSizeHectares": number | null,
     "caste": string | null,
-    "gender": string | null
+    "gender": string | null,
+    "dob": string | null,
+    "age": number | null,
+    "address": string | null,
+    "name": string | null,
+    "aadhaarNumber": string | null
   }
 }`;
 

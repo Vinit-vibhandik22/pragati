@@ -16,7 +16,8 @@ export default function ProfilePage() {
     mobile: "9876543210",
     dob: "20/10/2006",
     age: "19",
-    gender: "Male"
+    gender: "Male",
+    address: "Not set"
   });
   const [farmerId, setFarmerId] = useState<string>("Loading...");
 
@@ -43,7 +44,11 @@ export default function ProfilePage() {
             ...prev,
             name: data.farmer_name,
             aadhaar: data.aadhaar_number,
-            mobile: data.phone || "Not set"
+            mobile: data.phone || "Not set",
+            dob: data.profile_data?.dob || "Not set",
+            age: data.profile_data?.age || "Not set",
+            gender: data.profile_data?.gender || "Not set",
+            address: data.profile_data?.address || "Address will be updated from Aadhaar..."
           }));
         }
       }
@@ -120,13 +125,13 @@ export default function ProfilePage() {
           <EditableField 
             label={t('aadhaar_number')} 
             value={formData.aadhaar} 
-            onChange={(val) => setFormData({ ...formData, aadhaar: val })}
+            readonly 
             required 
           />
           <EditableField 
             label={t('farmer_name')} 
             value={formData.name} 
-            onChange={(val) => setFormData({ ...formData, name: val })}
+            readonly 
             required 
           />
           
@@ -160,19 +165,19 @@ export default function ProfilePage() {
           <EditableField 
             label={t('dob')} 
             value={formData.dob} 
-            onChange={(val) => setFormData({ ...formData, dob: val })}
+            readonly
             required 
           />
           <EditableField 
             label={t('age')} 
             value={formData.age} 
-            onChange={(val) => setFormData({ ...formData, age: val })}
+            readonly
             required 
           />
           <EditableField 
             label={t('gender')} 
             value={formData.gender} 
-            onChange={(val) => setFormData({ ...formData, gender: val })}
+            readonly
             required 
           />
         </div>
@@ -187,8 +192,9 @@ export default function ProfilePage() {
         <div className="flex flex-col gap-1">
           <label className="text-[13px] font-bold text-gray-700">{t('farmer_address')} <span className="text-red-500">*</span></label>
           <textarea 
-            className="w-full px-3 py-3 bg-gray-100 border border-gray-200 rounded text-[13px] text-gray-700 min-h-[80px] shadow-inner outline-none focus:border-[#1B4332] transition-all"
-            defaultValue="plot no-6 sarve no-27, galli no-11, near mscb dipi, Aurangabad (mh), 431001"
+            className="w-full px-3 py-3 bg-gray-100 border border-gray-200 rounded text-[13px] text-gray-700 min-h-[80px] shadow-inner outline-none cursor-not-allowed"
+            value={formData.address}
+            readOnly
           />
         </div>
       </section>
