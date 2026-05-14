@@ -110,11 +110,12 @@ export async function POST(req: Request) {
        - "Tractor", "Implements": No water source restriction. Set waterSourceCheck to "NOT_APPLICABLE".
        - If the 7/12 fails the applicable water source rule, set waterSourceCheck to "FAIL" and flag as "WATER_SOURCE_MISMATCH".
      9. Jirayat/Bagayat Land Type Check (BAKSY Rules):
-        - CRITICAL OVERRIDE: The top 'Area, Unit & Assessment' box is often outdated. Do not trust it blindly.
-        - You MUST look at the 'Village namuna bara (pikanchi nondavhi)' (Form 12) table at the bottom of the page. 
-        - IGNORE all older years (e.g. 2023-24). Only look at the MOST RECENT year (e.g. 2025-26) in Form 12.
-        - DO NOT attempt to match Khata numbers! Any well or irrigated crop in Form 12 applies to the whole parcel.
-        - If you see ANY numbers in the 'Irrigated' column or ANY mention of a well (vhir, vihir) in the MOST RECENT year of Form 12, you MUST classify the entire land as Bagayat (Irrigated).
+        - NOTE: Use Form 7 normally for farmer name and land area checks.
+        - EXCEPTION: For Jirayat/Bagayat classification ONLY, do NOT use the top 'Area, Unit & Assessment' summary box in Form 7 — it is frequently outdated and unreliable.
+        - Instead, look at the 'Village namuna bara (pikanchi nondavhi)' (Form 12) table at the bottom.
+        - IGNORE older years in Form 12 (e.g. 2023-24). ONLY read the MOST RECENT year (e.g. 2025-26).
+        - Do NOT try to match Khata numbers — any well or irrigated crop in Form 12 applies to the whole parcel.
+        - If the most recent year of Form 12 shows ANY irrigated crop area or a well (vhir, vihir), classify land as Bagayat.
         - Rules based on subsidy type:
           * "New Well" (Navin Vihir): Land MUST be Jirayat. Bagayat means irrigation already exists -- REJECT if Form 12 shows Bagayat.
           * "Farm Pond" (Plastic Lining): Land MUST be Jirayat. Rainwater collection for dryland -- REJECT if Form 12 shows Bagayat.
